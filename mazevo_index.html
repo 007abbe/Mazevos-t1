@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mazevo — Claudeus Capital</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#0a0a0e;--surface:#111118;--surface2:#181822;--border:#2a2a38;--border2:#3a3a4c;
+--text:#f0f0f2;--text2:#8888a0;--text3:#555568;
+--green:#22c55e;--green-bg:#0d2b1a;--amber:#f59e0b;--amber-bg:#2a1f06;
+--red:#ef4444;--red-bg:#2a0d0d;--blue:#3b82f6;--blue-bg:#0d1a2e;
+--cyan:#22d3ee;--magenta:#e879f9;
+--mono:'DM Mono',monospace;--radius:8px;
+}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;overflow:hidden;height:100vh}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:
+ radial-gradient(ellipse at 50% -20%, #16162a 0%, #0a0a0e 60%)}
+canvas{image-rendering:pixelated;image-rendering:crisp-edges;cursor:pointer;max-width:100vw;max-height:100vh}
+#hud{position:fixed;top:14px;left:16px;z-index:5;pointer-events:none}
+#hud .title{font-weight:700;font-size:18px;letter-spacing:.02em}
+#hud .sub{font-family:var(--mono);font-size:10px;color:var(--text2);letter-spacing:.1em;text-transform:uppercase}
+#tip{position:fixed;z-index:6;pointer-events:none;background:rgba(10,10,16,.92);border:1px solid var(--cyan);
+ color:var(--cyan);font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:999px;display:none}
+#fj-link{position:fixed;top:14px;right:16px;z-index:5;font-family:var(--mono);font-size:11px;color:var(--text2);
+ text-decoration:none;border:1px solid var(--border);padding:6px 12px;border-radius:999px;background:rgba(17,17,24,.8)}
+#fj-link:hover{color:var(--text);border-color:var(--border2)}
+
+/* ---- Panels ---- */
+.overlay{position:fixed;inset:0;background:rgba(5,5,10,.7);backdrop-filter:blur(3px);z-index:10;display:none;
+ align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:min(860px,94vw);
+ max-height:88vh;display:flex;flex-direction:column;box-shadow:0 0 60px rgba(34,211,238,.06)}
+.panel-head{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid var(--border)}
+.panel-head img.avatar{width:46px;height:46px;image-rendering:pixelated;object-fit:contain}
+.panel-head .p-name{font-weight:700;font-size:17px}
+.panel-head .p-role{font-family:var(--mono);font-size:10px;color:var(--text2);letter-spacing:.08em;text-transform:uppercase}
+.panel-close{margin-left:auto;background:none;border:1px solid var(--border);color:var(--text2);width:32px;height:32px;
+ border-radius:8px;cursor:pointer;font-size:15px}
+.panel-close:hover{color:var(--text);border-color:var(--border2)}
+.panel-body{padding:18px 20px;overflow-y:auto;font-size:13px;line-height:1.65}
+.mono-block{font-family:var(--mono);font-size:12px;white-space:pre-wrap;line-height:1.7;color:var(--text);
+ background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.section-t{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin:16px 0 8px}
+.hist-item{border-bottom:1px solid var(--border);padding:8px 0;cursor:pointer}
+.hist-item .h-meta{display:flex;gap:12px;font-family:var(--mono);font-size:11px;align-items:center}
+.hist-body{display:none;white-space:pre-wrap;font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--text2);margin-top:8px}
+.btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:var(--radius);
+ font-family:'Syne';font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
+.btn:hover{border-color:var(--border2)}
+.btn-primary{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+.btn:disabled{opacity:.5;cursor:default}
+.inp{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:var(--radius);
+ font-family:var(--mono);font-size:12px;outline:none;width:100%}
+.inp:focus{border-color:var(--border2)}
+.chip{display:inline-block;font-family:var(--mono);font-size:10px;border:1px solid var(--border2);color:var(--text2);
+ border-radius:999px;padding:2px 9px;margin-left:8px}
+.chip.t1{border-color:var(--green);color:var(--green)}
+.chip.t2{border-color:var(--amber);color:var(--amber)}
+.chip.t3{border-color:var(--red);color:var(--red)}
+.risk-LOW{color:var(--green)} .risk-ELEVATED{color:var(--amber)} .risk-HIGH{color:var(--red)}
+
+/* dashboard grid */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.dash-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;transition:.15s}
+.dash-card:hover{border-color:var(--cyan)}
+.dash-card .d-title{font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px}
+.dash-card .d-body{font-family:var(--mono);font-size:11px;color:var(--text2);margin-top:8px;line-height:1.6;max-height:120px;overflow:hidden}
+.stat-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;padding:2px 0}
+.stat-row b{color:var(--text)}
+
+/* login */
+#login-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:30px;width:min(360px,90vw);text-align:center}
+#login-card .l-title{font-weight:700;font-size:20px;margin-bottom:4px}
+#login-card .l-sub{font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:18px}
+#login-err{font-size:11px;font-family:var(--mono);color:var(--red);margin-top:10px;min-height:14px}
+.src-item{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;font-size:12px}
+.src-item a{color:var(--text);text-decoration:none}
+.src-item a.ob{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--blue)}
+</style>
+</head>
+<body>
+
+<div id="stage"><canvas id="cv" width="1920" height="1088"></canvas></div>
+<div id="hud"><div class="title">MAZEVO</div><div class="sub">Claudeus Capital · Tokyo</div></div>
+<a id="fj-link" href="https://007abbe.github.io/trading-journal/" target="_blank">Open FlowJournal ↗</a>
+<div id="tip"></div>
+
+<!-- Login -->
+<div class="overlay" id="ov-login"><div id="login-card">
+  <div class="l-title" id="login-title">Mazevo</div>
+  <div class="l-sub" id="login-sub">Claudeus Capital HQ</div>
+  <div id="login-email-wrap" style="margin-bottom:10px"><input class="inp" type="email" id="login-email" placeholder="you@email.com"></div>
+  <input class="inp" type="password" id="login-pass" placeholder="password" onkeydown="if(event.key==='Enter')doLogin()">
+  <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="doLogin()">Enter the office</button>
+  <div id="login-err"></div>
+</div></div>
+
+<!-- Generic panel -->
+<div class="overlay" id="ov-panel" onclick="if(event.target===this)closePanel()">
+  <div class="panel">
+    <div class="panel-head">
+      <img class="avatar" id="p-avatar" src="" alt="">
+      <div><div class="p-name" id="p-name"></div><div class="p-role" id="p-role"></div></div>
+      <button class="panel-close" onclick="closePanel()">✕</button>
+    </div>
+    <div class="panel-body" id="p-body"></div>
+  </div>
+</div>
+
+<script>
+// ============ CONFIG ============
+const SUPABASE_URL='https://czwcmtscirpwncmubeus.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6d2NtdHNjaXJwd25jbXViZXVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDA2NzEsImV4cCI6MjA5NzExNjY3MX0.5G3RCJNt1f5U7qS-q7oDD8q8GRCJSfERVB9W8CSnptA';
+const FJ_URL='https://007abbe.github.io/trading-journal/';
+const KEY_STORAGE='flowjournal_anthropic_key';
+const AUTH_EMAIL_KEY='flowjournal_email';
+let sb=null,currentUser=null;
+try{sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);}catch(e){console.error(e);}
+
+// ============ ENGINE ============
+let T=64,COLS=30,ROWS=17;
+let CUSTOM=null; // loaded from office.json if present
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+const IMG={};
+const ASSETS=['hf_wood','hf_wood2','hf_herring','hf_herring2','hf_carpet','hf_carpet2','hf_marble','hf_marble2',
+'hf_wall','hf_wall_chart','hf_wall_marble','hf_wall_dark','hf_win_a','hf_win_b','hf_win_c',
+'hf_door_open','hf_poster','hf_cabinet','hf_rug','hf_winsmall',
+'door_main','door_glass','sign_dom','sign_finski','sign_gnosis','sign_exit','arrow',
+'desk_wizard','desk_trading','shelf_a','shelf_b','table_books','globe','clock_white','rug','plant_t',
+'wall2_wood','wall2_wood2','wall2_slat','wall2_dark','wall2_light','wall2_glass',
+'win2_wide','win2_city','win2_corner','win2_wood','win2_tall',
+'winS_framed','winS_round','winS_small','winS_slim','wall_clock2','clock2','wall_bench','wall_shelf_open','wall_exit2',
+'wall_door_wood','wall_door2','desk2_dual','desk2_trader','desk2_screens','shelf2_tall','shelf2_a','shelf2_b',
+'books_stack','globe2','plant_small','plant_big','sofa2','lamp2','coffee2','cooler2','board2',
+'void_concrete','void_concrete2','edge_wall','edge_corner','trim_top','trim_bottom','trim_left','trim_right','trim_corner_tl','trim_corner_tr','trim_corner_bl','trim_corner_br','trim_frame'];
+const CHARS=[];
+['dom','finski','gnosis','posty'].forEach(n=>{
+ ['south','north','east','west'].forEach(d=>{CHARS.push(n+'_idle_'+d);CHARS.push(n+'_walk_'+d);});
+ CHARS.push(n+'_think');
+});
+
+function load(name,path){return new Promise(res=>{const i=new Image();i.onload=()=>{IMG[name]=i;res();};i.onerror=()=>{console.warn('missing',path);res();};i.src=path;});}
+
+// ---- Rooms (hedgefund layout per sketch) ----
+const OFFICES={
+ finski:{x:1,y:1,w:8,h:8,floor:'hf_wood',v:'hf_wood2',door:4,name:'FINSKI'},
+ domU:{x:11,y:1,w:8,h:8,floor:'hf_wood',v:'hf_wood2',door:14,name:'DOM'},
+ domL:{x:11,y:8,w:8,h:6,floor:'hf_wood',v:'hf_wood2',door:14,name:'DOM'},
+ gnosis:{x:21,y:1,w:8,h:8,floor:'hf_herring',v:'hf_herring2',door:24,name:'GNOSIS'}
+};
+const RECEPTION={x:1,y:12,w:6,h:4};
+function inR(x,y,r){return x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h;}
+function hallAt(x,y){
+ if(y>=9&&y<=11&&x>=4&&x<=5)return true;           // finski vertical
+ if(y>=10&&y<=11&&x>=5&&x<=10)return true;          // west horizontal (extended to reception connector)
+ if(y>=9&&y<=11&&x>=24&&x<=25)return true;          // gnosis vertical
+ if(y>=10&&y<=11&&x>=19&&x<=20)return true;         // east horizontal
+ return false;
+}
+function tileKind(x,y){
+ for(const k in OFFICES){const o=OFFICES[k];
+  if(inR(x,y,o)){
+   if(y===o.y)return'hf_wall';
+   if(y===o.y+o.h-1)return'hf_wall';
+   return((x*7+y*13)%9<2)?o.v:o.floor;
+  }}
+ if(inR(x,y,RECEPTION)){
+  if(y===RECEPTION.y)return'hf_wall_marble';
+  if(y===RECEPTION.y+RECEPTION.h-1)return'hf_wall_marble';
+  return((x*7+y*13)%9<2)?'hf_marble2':'hf_marble';
+ }
+ if(hallAt(x,y))return((x*7+y*13)%9<2)?'hf_carpet2':'hf_carpet';
+ return null; // void
+}
+
+// deco: [img, tileX, tileY, pxOffX, pxOffY]
+const DECO=[
+ // Finski — wide bright window, desk, minimal
+ ['hf_win_a',3,1],['hf_win_b',4,1],['hf_win_c',5,1],['clock_white',7,1,0,6],
+ ['desk_trading',4,4],['hf_cabinet',1,2],['hf_poster',7,1,0,-2],
+ ['door_main',4,8],['sign_finski',4,8,0,-26],
+ // DOM upper — window + wizard desk
+ ['hf_win_b',13,1],['hf_win_a',14,1],['hf_win_c',15,1],
+ ['desk_wizard',14,4],['hf_wall_chart',11,1],
+ ['door_main',14,8],['sign_dom',14,8,0,-26],
+ // DOM lower — second desk, exit door bottom
+ ['desk_trading',14,10],['hf_rug',14,11],['hf_cabinet',17,9],
+ ['door_main',14,13],['sign_exit',14,13,0,-26],
+ // Gnosis — window, shelves, globe
+ ['hf_win_c',23,1],['hf_win_a',24,1],['hf_win_b',25,1],
+ ['shelf_a',21,2],['shelf_b',22,2],['table_books',24,4],['globe',26,3],['plant_t',27,2],
+ ['door_main',24,8],['sign_gnosis',24,8,0,-26],
+ // Reception — marble, posty's desk
+ ['desk_trading',3,13],['hf_rug',4,14],['plant_t',1,13],
+ ['door_glass',5,12],['arrow',5,12,0,-24],
+ // hallway touches
+ ['hf_poster',12,1,0,-2]
+];
+
+// clickable zones: [x,y,w,h,id,label]
+const ZONES=[
+ [1,1,8,8,'finski','Finski — Pre-market brief'],
+ [11,1,8,13,'dom','DOM — Post-trade analyst'],
+ [21,1,8,8,'gnosis','Gnosis — Knowledge base'],
+ [1,12,6,4,'dashboard','Reception — Open dashboard'],
+ [13.4,12.4,1.6,1.6,'exit','Exit — Back to FlowJournal']
+];
+// ---- static scene to offscreen ----
+const scene=document.createElement('canvas');scene.width=cv.width;scene.height=cv.height;
+const sctx=scene.getContext('2d');sctx.imageSmoothingEnabled=false;
+function drawStatic(){
+ sctx.fillStyle='#26262b';sctx.fillRect(0,0,scene.width,scene.height);
+ if(CUSTOM){
+   const OX=CAM.ox*T, OY=CAM.oy*T;
+   const hasFloor=(x,y)=>{
+     if(x<0||y<0||x>=CUSTOM.cols||y>=CUSTOM.rows)return false;
+     return !!(CUSTOM.floor[y]&&CUSTOM.floor[y][x]);
+   };
+   // 1) fill ALL void with concrete first
+   for(let y=0;y<CUSTOM.rows;y++)for(let x=0;x<CUSTOM.cols;x++){
+     if(!hasFloor(x,y)){
+       const t=((x*7+y*13)%11<3)?'void_concrete2':'void_concrete';
+       if(IMG[t])sctx.drawImage(IMG[t],x*T-OX,y*T-OY,T,T);
+     }
+   }
+   // 2) floor/wall/overlay/edge/deco
+   for(const L of ['floor','wall','overlay','edge','deco']){
+     const layer=CUSTOM[L]||[];
+     for(let y=0;y<CUSTOM.rows;y++)for(let x=0;x<CUSTOM.cols;x++){
+       const cell=layer[y]&&layer[y][x];
+       if(!cell)continue;
+       const n=cell.n||cell, r=cell.r||0;
+       if(!IMG[n])continue;
+       if(r){sctx.save();sctx.translate(x*T-OX+T/2,y*T-OY+T/2);sctx.rotate(r*Math.PI/2);sctx.drawImage(IMG[n],-T/2,-T/2,T,T);sctx.restore();}
+       else sctx.drawImage(IMG[n],x*T-OX,y*T-OY,T,T);
+     }
+   }
+   // 3) auto wall-edge trim on floor tiles bordering void
+   const drawEdge=(x,y,rot)=>{
+     if(!IMG.edge_wall)return;
+     sctx.save();sctx.translate(x*T-OX+T/2,y*T-OY+T/2);sctx.rotate(rot*Math.PI/2);
+     sctx.drawImage(IMG.edge_wall,-T/2,-T/2,T,T);sctx.restore();
+   };
+   for(let y=0;y<CUSTOM.rows;y++)for(let x=0;x<CUSTOM.cols;x++){
+     if(!hasFloor(x,y))continue;
+     if(!hasFloor(x,y-1))drawEdge(x,y,0);
+     if(!hasFloor(x+1,y))drawEdge(x,y,1);
+     if(!hasFloor(x,y+1))drawEdge(x,y,2);
+     if(!hasFloor(x-1,y))drawEdge(x,y,3);
+   }
+   return;
+ }
+ for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+   const k=tileKind(x,y);
+   if(!k)continue;
+   const img=IMG[k];
+   if(img)sctx.drawImage(img,x*T,y*T,T,T);
+ }
+ for(const[name,tx,ty,ox=0,oy=0]of DECO){
+   const img=IMG[name];if(!img)continue;
+   sctx.drawImage(img,tx*T+ox,ty*T+oy,T,T);
+ }
+}
+
+// ---- characters: anchored wander ----
+// each char mostly stands at anchor, occasionally strolls within their room
+const WALKERS=[
+ {id:'finski',anchor:[4.5,3.4],room:{x:1.6,y:2.4,w:6.8,h:4.6},px:0,py:0},
+ {id:'dom',anchor:[14.5,3.4],room:{x:11.6,y:2.4,w:6.8,h:10},px:0,py:0},
+ {id:'gnosis',anchor:[24.5,3.6],room:{x:21.6,y:2.4,w:6.8,h:4.6},px:0,py:0},
+ {id:'posty',anchor:[3.5,13.5],room:{x:1.5,y:13,w:4.5,h:1.9},px:0,py:0}
+];
+for(const w of WALKERS){w.px=w.anchor[0]*T;w.py=w.anchor[1]*T;w.state='idle';w.t=0;w.dir='south';w.tx=w.px;w.ty=w.py;w.frame=0;w.ft=0;}
+// walkable = floor tiles only (chars never step on void or through walls)
+let WALK=null;
+function buildWalkable(d){
+ WALK=[];
+ for(let y=0;y<d.rows;y++){const row=[];for(let x=0;x<d.cols;x++){row.push(!!(d.floor[y]&&d.floor[y][x]));}WALK.push(row);}
+}
+function walkable(tx,ty){
+ if(!WALK)return true;
+ if(ty<0||tx<0||ty>=WALK.length||tx>=WALK[0].length)return false;
+ return WALK[ty][tx];
+}
+function pickTarget(w){
+ // pick a nearby walkable tile within 3 tiles of home, floor only
+ const hx=w.home[0],hy=w.home[1];
+ for(let tries=0;tries<12;tries++){
+   const tx=hx+Math.floor((Math.random()*7)-3);
+   const ty=hy+Math.floor((Math.random()*7)-3);
+   if(walkable(tx,ty)){w.tx=(tx+0.5)*T;w.ty=(ty+0.6)*T;return true;}
+ }
+ return false;
+}
+function stepWalker(w){
+ w.t++;
+ if(w.state==='idle'){
+   // rarely act; ~every 10-14s decide
+   if(w.t>60*8&&Math.random()<0.0025){
+     if(Math.random()<0.25){ if(pickTarget(w))w.state='walk'; }
+     else w.state='think';
+     w.t=0;
+   }
+ }else if(w.state==='think'){
+   if(w.t>200){w.state='idle';w.t=0;w.dir='south';}
+ }else if(w.state==='walk'){
+   const dx=w.tx-w.px,dy=w.ty-w.py,dist=Math.hypot(dx,dy);
+   if(dist<2){
+     const atHome=Math.abs(w.tx-w.anchor[0]*T)<3&&Math.abs(w.ty-w.anchor[1]*T)<3;
+     w.state=atHome?'idle':'pause';w.t=0;w.dir='south';return;
+   }
+   const sp=0.7; // slower, calmer
+   // tentative next position, blocked-check on the tile we'd enter
+   const nx=w.px+dx/dist*sp, ny=w.py+dy/dist*sp;
+   const ntx=Math.floor(nx/T), nty=Math.floor(ny/T);
+   if(walkable(ntx,nty)){w.px=nx;w.py=ny;}
+   else{w.state='pause';w.t=0;} // hit a wall/void -> stop, go home next
+   w.dir=Math.abs(dx)>Math.abs(dy)?(dx>0?'east':'west'):(dy>0?'south':'north');
+   w.ft++;if(w.ft>14){w.frame=1-w.frame;w.ft=0;} // slower step animation
+ }else if(w.state==='pause'){
+   if(w.t>200){w.tx=w.anchor[0]*T;w.ty=w.anchor[1]*T;w.state='walk';w.t=0;}
+ }
+}
+let hoverZone=null;
+function drawFrame(ts){
+ const OX=CAM.ox*T, OY=CAM.oy*T;
+ ctx.drawImage(scene,0,0);
+ if(hoverZone){
+   const[zx,zy,zw,zh]=hoverZone;
+   ctx.strokeStyle='rgba(34,211,238,.9)';ctx.lineWidth=3;
+   ctx.strokeRect(zx*T-OX+2,zy*T-OY+2,zw*T-4,zh*T-4);
+   ctx.fillStyle='rgba(34,211,238,.06)';
+   ctx.fillRect(zx*T-OX+2,zy*T-OY+2,zw*T-4,zh*T-4);
+ }
+ for(const w of WALKERS){
+   stepWalker(w);
+   let img;
+   if(w.state==='think')img=IMG[w.id+'_think'];
+   else if(w.state==='walk')img=IMG[w.id+(w.frame?'_walk_':'_idle_')+w.dir];
+   else img=IMG[w.id+'_idle_'+w.dir];
+   if(img)ctx.drawImage(img,w.px-OX-46,w.py-OY-92+10,92,92);
+ }
+ requestAnimationFrame(drawFrame);
+}
+
+// ---- input ----
+const tip=document.getElementById('tip');
+function canvasPos(e){
+ const r=cv.getBoundingClientRect();
+ return{x:(e.clientX-r.left)*(cv.width/r.width)/T+CAM.ox,y:(e.clientY-r.top)*(cv.height/r.height)/T+CAM.oy};
+}
+cv.addEventListener('mousemove',e=>{
+ const p=canvasPos(e);hoverZone=null;tip.style.display='none';
+ for(const z of ZONES){
+   if(p.x>=z[0]&&p.x<z[0]+z[2]&&p.y>=z[1]&&p.y<z[1]+z[3]){
+     hoverZone=z;
+     tip.textContent=z[5];tip.style.display='block';
+     tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+10)+'px';
+     break;
+   }}
+ cv.style.cursor=hoverZone?'pointer':'default';
+});
+cv.addEventListener('click',e=>{
+ const p=canvasPos(e);
+ for(const z of ZONES){
+   if(p.x>=z[0]&&p.x<z[0]+z[2]&&p.y>=z[1]&&p.y<z[1]+z[3]){openZone(z[4]);return;}
+ }
+});
+window.addEventListener('resize',fit);
+function fit(){
+ const sw=innerWidth/cv.width,sh=innerHeight/cv.height,s=Math.min(sw,sh);
+ cv.style.width=(cv.width*s)+'px';cv.style.height=(cv.height*s)+'px';
+}
+
+// ============ DATA / PANELS ============
+const ov=document.getElementById('ov-panel');
+function closePanel(){ov.classList.remove('open');}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function panel(avatar,name,role,bodyHTML){
+ document.getElementById('p-avatar').src=avatar;
+ document.getElementById('p-name').textContent=name;
+ document.getElementById('p-role').textContent=role;
+ document.getElementById('p-body').innerHTML=bodyHTML;
+ ov.classList.add('open');
+}
+function needLogin(){return !currentUser;}
+const loginHint='<div class="mono-block">Log in required — reload the page to sign in, or open FlowJournal and log in there first (session is shared).</div>';
+
+async function openZone(id){
+ if(id==='exit'){
+   panel('assets/door_main.png','Exit','Elevator — ground floor',
+    `<div class="mono-block">Leaving the office?</div>
+     <div style="margin-top:14px;display:flex;gap:10px">
+       <a class="btn btn-primary" style="text-decoration:none" href="${FJ_URL}">Go to FlowJournal</a>
+       <button class="btn" onclick="closePanel()">Stay in Mazevo</button>
+     </div>`);
+   return;
+ }
+ if(id==='dashboard')return openDashboard();
+ if(id==='dom')return openDom();
+ if(id==='finski')return openFinski();
+ if(id==='gnosis')return openGnosis();
+}
+
+// ---- DOM panel ----
+async function openDom(){
+ panel('assets/chars/dom_idle_south.png','DOM','Post-trade analyst','<div class="mono-block">Fetching reports…</div>');
+ if(needLogin())return document.getElementById('p-body').innerHTML=loginHint;
+ try{
+  const{data,error}=await sb.from('dom_reports').select('id,created_at,scope,report').order('created_at',{ascending:false}).limit(11);
+  if(error)throw error;
+  if(!data||!data.length){document.getElementById('p-body').innerHTML='<div class="mono-block">No reports yet. Run DOM in FlowJournal after your next session.</div>';return;}
+  const latest=data[0];
+  const rest=data.slice(1);
+  document.getElementById('p-body').innerHTML=`
+   <div class="section-t">Latest report — ${new Date(latest.created_at).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})} · ${esc(latest.scope)}</div>
+   <div class="mono-block">${esc(latest.report)}</div>
+   <div class="section-t">History</div>
+   ${rest.length?rest.map(r=>`
+     <div class="hist-item" onclick="this.querySelector('.hist-body').style.display=this.querySelector('.hist-body').style.display==='none'?'':'none'">
+       <div class="h-meta"><span>${new Date(r.created_at).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}</span><span style="color:var(--text3)">${esc(r.scope)}</span></div>
+       <div class="hist-body">${esc(r.report)}</div>
+     </div>`).join(''):'<div style="color:var(--text3);font-family:var(--mono);font-size:11px">No older reports.</div>'}
+   <div style="margin-top:16px"><a class="btn" style="text-decoration:none" href="${FJ_URL}" target="_blank">Run new analysis in FlowJournal ↗</a></div>`;
+ }catch(e){document.getElementById('p-body').innerHTML='<div class="mono-block">Failed: '+esc(e.message)+'</div>';}
+}
+
+// ---- Finski panel ----
+async function openFinski(){
+ panel('assets/chars/finski_idle_south.png','Finski','Pre-market brief','<div class="mono-block">Fetching briefs…</div>');
+ if(needLogin())return document.getElementById('p-body').innerHTML=loginHint;
+ try{
+  const{data,error}=await sb.from('finski_briefs').select('id,created_at,model_risk,triggered,brief').order('created_at',{ascending:false}).limit(11);
+  if(error)throw error;
+  if(!data||!data.length){document.getElementById('p-body').innerHTML='<div class="mono-block">No briefs yet. Generate one in FlowJournal → Finski.</div>';return;}
+  const l=data[0],rest=data.slice(1);
+  document.getElementById('p-body').innerHTML=`
+   <div class="section-t">Latest brief — ${new Date(l.created_at).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}</div>
+   <div class="mono-block"><span class="risk-${esc(l.model_risk)}" style="font-weight:600">MODEL-RISK: ${esc(l.model_risk)}</span>\n${esc(l.brief.split('\n').slice(1).join('\n'))}</div>
+   <div class="section-t">History</div>
+   ${rest.length?rest.map(r=>`
+     <div class="hist-item" onclick="this.querySelector('.hist-body').style.display=this.querySelector('.hist-body').style.display==='none'?'':'none'">
+       <div class="h-meta"><span>${new Date(r.created_at).toLocaleString('sv-SE',{dateStyle:'short',timeStyle:'short'})}</span><span class="risk-${esc(r.model_risk)}" style="font-weight:600">${esc(r.model_risk)}</span></div>
+       <div class="hist-body">${esc(r.brief)}</div>
+     </div>`).join(''):'<div style="color:var(--text3);font-family:var(--mono);font-size:11px">No older briefs.</div>'}
+   <div style="margin-top:16px"><a class="btn" style="text-decoration:none" href="${FJ_URL}" target="_blank">Generate new brief in FlowJournal ↗</a></div>`;
+ }catch(e){document.getElementById('p-body').innerHTML='<div class="mono-block">Failed: '+esc(e.message)+'</div>';}
+}
+
+// ---- Gnosis panel ----
+function openGnosis(){
+ panel('assets/chars/gnosis_idle_south.png','Gnosis','Knowledge base',`
+  <div class="section-t">Search the library</div>
+  <div style="display:flex;gap:8px">
+    <input class="inp" id="g-q" placeholder="gamma exposure, away-stack, vanna…" onkeydown="if(event.key==='Enter')mzGnosisSearch()">
+    <button class="btn btn-primary" onclick="mzGnosisSearch()">Search</button>
+  </div>
+  <div id="g-res" style="margin-top:12px"></div>
+  <div class="section-t">Ask Gnosis</div>
+  <div style="display:flex;gap:8px">
+    <input class="inp" id="g-ask" placeholder="how should I use GEX pre-market?" onkeydown="if(event.key==='Enter')mzGnosisAsk()">
+    <button class="btn btn-primary" id="g-ask-btn" onclick="mzGnosisAsk()">Ask</button>
+  </div>
+  <div id="g-answer" class="mono-block" style="margin-top:12px;display:none"></div>
+  <div id="g-src" style="margin-top:10px"></div>
+  <div style="margin-top:16px"><a class="btn" style="text-decoration:none" href="${FJ_URL}" target="_blank">Sync vault in FlowJournal ↗</a></div>`);
+}
+async function mzQuery(q,cnt){
+ let{data,error}=await sb.rpc('gnosis_search',{q,cnt});
+ if(error)throw error;
+ if(!data||!data.length){
+   const orq=q.trim().split(/\s+/).filter(w=>w.length>2).join(' OR ');
+   if(orq&&orq!==q){({data,error}=await sb.rpc('gnosis_search',{q:orq,cnt}));if(error)throw error;}
+ }
+ return data||[];
+}
+function tierChip(t,by){return`<span class="chip t${t||3}">Tier ${t||'?'}${by==='gnosis'?' · Gnosis':''}</span>`;}
+function obLink(p){return'obsidian://open?vault=CLAUDDY&file='+encodeURIComponent(p.replace(/\.md$/i,''));}
+async function mzGnosisSearch(){
+ const q=document.getElementById('g-q').value.trim();if(!q)return;
+ const res=document.getElementById('g-res');
+ if(needLogin())return res.innerHTML=loginHint;
+ res.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Searching…</div>';
+ try{
+  const rows=await mzQuery(q,20);
+  if(!rows.length)return res.innerHTML='<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">No results.</div>';
+  const docs=new Map();
+  rows.forEach(r=>{if(!docs.has(r.path))docs.set(r.path,{...r});});
+  res.innerHTML=[...docs.values()].slice(0,8).map(d=>`
+   <div class="src-item"><a href="${obLink(d.path)}">${esc(d.title||d.path)}</a>${tierChip(d.tier,d.tier_by)}
+    <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${esc(d.topic||'')}</span>
+    <a class="ob" href="${obLink(d.path)}">Obsidian →</a>
+   </div>`).join('');
+ }catch(e){res.innerHTML='<div style="color:var(--red);font-size:12px">'+esc(e.message)+'</div>';}
+}
+async function mzGnosisAsk(){
+ const q=document.getElementById('g-ask').value.trim();if(!q)return;
+ const ans=document.getElementById('g-answer'),src=document.getElementById('g-src'),btn=document.getElementById('g-ask-btn');
+ if(needLogin()){ans.style.display='';ans.textContent='Log in required.';return;}
+ const key=localStorage.getItem(KEY_STORAGE);
+ if(!key){ans.style.display='';ans.textContent='No Anthropic API key found — save it once in FlowJournal → DOM (shared automatically).';return;}
+ btn.disabled=true;ans.style.display='';ans.textContent='Retrieving sources…';src.innerHTML='';
+ try{
+  const rows=await mzQuery(q,10);
+  if(!rows.length){ans.textContent='No relevant sources in the knowledge base.';return;}
+  const excerpts=rows.map((r,i)=>`[${i+1}] "${r.title}" (Tier ${r.tier}${r.tier_by==='gnosis'?', marked by Gnosis':''}, path: ${r.path})\n${r.content}`).join('\n\n---\n\n');
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+   headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+   body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,messages:[{role:'user',content:
+`You are Gnosis, the knowledge-base librarian for an NQ futures trader. Answer using ONLY the numbered excerpts.
+Rules: ground every claim in excerpts, reference [n]; quote short key passages verbatim in quotes; ALWAYS state the tier relied on; if only Tier 3 supports it, say so explicitly (Tier 3 is unverified); if excerpts conflict, present both; if they don't answer, say exactly that; answer in the language of the question; be concise.
+
+QUESTION: ${q}
+
+EXCERPTS:
+${excerpts}`}]})});
+  if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err?.error?.message||('API '+res.status));}
+  const data=await res.json();
+  ans.textContent=(data.content||[]).map(c=>c.text||'').join('\n').trim();
+  const seen=new Map();rows.forEach((r,i)=>{if(!seen.has(r.path))seen.set(r.path,{...r,idx:i+1});});
+  src.innerHTML=[...seen.values()].map(r=>`
+   <div class="src-item"><span style="font-family:var(--mono);font-size:11px;color:var(--text3)">[${r.idx}]</span>
+    <a href="${obLink(r.path)}">${esc(r.title||r.path)}</a>${tierChip(r.tier,r.tier_by)}
+    <a class="ob" href="${obLink(r.path)}">Obsidian →</a></div>`).join('');
+ }catch(e){ans.textContent='Ask failed: '+e.message;}
+ finally{btn.disabled=false;}
+}
+
+// ---- Dashboard ----
+async function openDashboard(){
+ panel('assets/chars/posty_think.png','Mazevos Dashboard','Reception · all desks at a glance','<div class="mono-block">Loading…</div>');
+ if(needLogin())return document.getElementById('p-body').innerHTML=loginHint;
+ try{
+  const[tr,dr,fb]=await Promise.all([
+   sb.from('trades').select('pnl,risk,status,date').order('date',{ascending:false}).limit(500),
+   sb.from('dom_reports').select('created_at,report').order('created_at',{ascending:false}).limit(1),
+   sb.from('finski_briefs').select('created_at,model_risk,brief').order('created_at',{ascending:false}).limit(1)
+  ]);
+  const trades=tr.data||[];
+  const n=trades.length,wins=trades.filter(t=>Number(t.pnl)>0).length;
+  const net=trades.reduce((a,t)=>a+Number(t.pnl||0),0);
+  const wr=n?Math.round(wins/n*100):0;
+  const last5=trades.slice(0,5).map(t=>`${(t.date||'').slice(5,10)}  ${Number(t.pnl)>=0?'+':''}$${Number(t.pnl).toFixed(0)}`).join('\n');
+  const dom=dr.data&&dr.data[0];
+  const fin=fb.data&&fb.data[0];
+  document.getElementById('p-body').innerHTML=`
+   <div class="dash-grid">
+    <div class="dash-card" onclick="window.open('${FJ_URL}','_blank')">
+      <div class="d-title">📓 Trade Journal</div>
+      <div class="d-body"><div class="stat-row"><span>Total trades</span><b>${n}</b></div>
+      <div class="stat-row"><span>Win rate</span><b>${wr}%</b></div>
+      <div class="stat-row"><span>Net P&L</span><b style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':''}$${net.toFixed(0)}</b></div>
+      <div style="margin-top:6px;white-space:pre">${esc(last5)}</div></div>
+    </div>
+    <div class="dash-card" onclick="openDom()">
+      <div class="d-title">🔮 DOM — latest</div>
+      <div class="d-body">${dom?esc(dom.report.split('\n').slice(0,8).join('\n')):'No reports yet.'}</div>
+    </div>
+    <div class="dash-card" onclick="openFinski()">
+      <div class="d-title">🕐 Finski — latest brief</div>
+      <div class="d-body">${fin?`<span class="risk-${esc(fin.model_risk)}" style="font-weight:600">MODEL-RISK: ${esc(fin.model_risk)}</span>\n${esc(fin.brief.split('\n').slice(2,8).join('\n'))}`:'No briefs yet.'}</div>
+    </div>
+    <div class="dash-card" onclick="openGnosis()">
+      <div class="d-title">📚 Gnosis — library</div>
+      <div class="d-body">Search the knowledge base, ask questions with cited sources, jump to Obsidian.</div>
+    </div>
+   </div>`;
+ }catch(e){document.getElementById('p-body').innerHTML='<div class="mono-block">Failed: '+esc(e.message)+'</div>';}
+}
+
+// ============ AUTH ============
+async function doLogin(){
+ const saved=localStorage.getItem(AUTH_EMAIL_KEY);
+ const email=saved||document.getElementById('login-email').value.trim();
+ const pass=document.getElementById('login-pass').value;
+ const err=document.getElementById('login-err');
+ if(!email||!pass){err.textContent='Enter password.';return;}
+ try{
+  const res=await sb.auth.signInWithPassword({email,password:pass});
+  if(res.error)throw res.error;
+  localStorage.setItem(AUTH_EMAIL_KEY,email);
+ }catch(e){err.textContent=e.message||'Login failed';}
+}
+function initLoginCard(){
+ const saved=localStorage.getItem(AUTH_EMAIL_KEY);
+ if(saved){
+  document.getElementById('login-email-wrap').style.display='none';
+  document.getElementById('login-title').textContent='Welcome back, Abbe';
+  document.getElementById('login-sub').textContent='Claudeus Capital HQ · Mazevo';
+ }
+}
+async function initAuth(){
+ if(!sb)return;
+ sb.auth.onAuthStateChange((ev,session)=>{
+  if(session&&session.user){currentUser=session.user;document.getElementById('ov-login').classList.remove('open');}
+  else{currentUser=null;document.getElementById('ov-login').classList.add('open');}
+ });
+ const{data}=await sb.auth.getSession();
+ if(data&&data.session){currentUser=data.session.user;}
+ else{initLoginCard();document.getElementById('ov-login').classList.add('open');}
+}
+
+// ============ BOOT ============
+async function loadCustomLayout(){
+ try{
+   const res=await fetch('office.json?v='+Date.now());
+   if(!res.ok)return null;
+   const d=await res.json();
+   if(!d||!d.cols)return null;
+   return d;
+ }catch(e){return null;}
+}
+let CAM={ox:0,oy:0}; // tile offset of the crop origin
+function applyCustom(d){
+ CUSTOM=d;COLS=d.cols;ROWS=d.rows;
+ // --- compute office bounding box across all layers + chars ---
+ let minX=COLS,minY=ROWS,maxX=0,maxY=0,any=false;
+ const scan=(L)=>{const g=d[L]||[];for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){if(g[y]&&g[y][x]){any=true;if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;}}};
+ ['floor','wall','overlay','edge','deco'].forEach(scan);
+ for(const id in (d.chars||{})){const c=d.chars[id];if(c.x<minX)minX=c.x;if(c.x>maxX)maxX=c.x;if(c.y<minY)minY=c.y;if(c.y>maxY)maxY=c.y;any=true;}
+ if(!any){minX=0;minY=0;maxX=COLS-1;maxY=ROWS-1;}
+ const M=2; // tile margin around office
+ CAM.ox=Math.max(0,minX-M);CAM.oy=Math.max(0,minY-M);
+ const cropW=Math.min(COLS,maxX+1+M)-CAM.ox;
+ const cropH=Math.min(ROWS,maxY+2+M)-CAM.oy; // +2 extra bottom for char sprite height
+ cv.width=cropW*T;cv.height=cropH*T;
+ scene.width=cv.width;scene.height=cv.height;
+ sctx.imageSmoothingEnabled=false;ctx.imageSmoothingEnabled=false;
+ ZONES.length=0;
+ const signMap={sign_finski:'finski',sign_dom:'dom',sign_gnosis:'gnosis'};
+ const cellName=(L,x,y)=>{const c=L[y]&&L[y][x];return c?(c.n||c):null;};
+ for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+   const n=cellName(d.overlay||[],x,y)||cellName(d.deco||[],x,y);
+   if(signMap[n])ZONES.push([Math.max(0,x-3),Math.max(0,y-6),7,7,signMap[n],signMap[n]+' — open']);
+   if(n==='sign_exit'||n==='wall_exit2')ZONES.push([x-0.5,y,2,2,'exit','Exit — Back to FlowJournal']);
+   if(n==='door_glass')ZONES.push([x-1,y-1,3,3,'dashboard','Reception — Open dashboard']);
+ }
+ WALKERS.length=0;
+ const cc=d.chars||{};
+ for(const id of ['finski','dom','gnosis','posty']){
+   if(cc[id]){
+     const a=[cc[id].x+0.5,cc[id].y+0.6];
+     WALKERS.push({id,home:[cc[id].x,cc[id].y],anchor:a,
+       px:a[0]*T,py:a[1]*T,state:'idle',t:0,dir:'south',tx:a[0]*T,ty:a[1]*T,frame:0,ft:0});
+   }
+ }
+ buildWalkable(d);
+}
+(async function(){
+ const jobs=[];
+ for(const a of ASSETS)jobs.push(load(a,'assets/'+a+'.png'));
+ for(const c of CHARS)jobs.push(load(c,'assets/chars/'+c+'.png'));
+ await Promise.all(jobs);
+ const custom=await loadCustomLayout();
+ if(custom)applyCustom(custom);
+ drawStatic();
+ fit();
+ requestAnimationFrame(drawFrame);
+ initAuth();
+})();
+</script>
+</body>
+</html>
