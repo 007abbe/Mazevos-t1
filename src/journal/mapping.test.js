@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { toRow, fromRow, stampNow, uid } from './mapping.js'
+import { toRow, fromRow, stampNow, uid, toDatetimeLocal, isValidTradeDate } from './mapping.js'
 import {
   TYPES, STATUSES, SETUP_TYPES, BANDS, TARGETS, REGIMES, BE_REASONS, DAY_TYPES,
   RULE_BROKEN_VALUES,
@@ -171,6 +171,32 @@ test('a new trade round-trips through the full write shape', () => {
   assert.equal(created.pnl, 0)
   assert.deepEqual(created.rule_broken, [])
   assert.ok(Number.isInteger(created.updated_at))
+})
+
+test('toDatetimeLocal emits the exact shape the date column expects', () => {
+  assert.equal(toDatetimeLocal(new Date(2026, 0, 5, 9, 7)), '2026-01-05T09:07')
+  assert.equal(toDatetimeLocal(new Date(2026, 11, 31, 23, 59)), '2026-12-31T23:59')
+  assert.match(toDatetimeLocal(), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+})
+
+test('toDatetimeLocal output sorts lexicographically in chronological order', () => {
+  // `date` is a text column and listTrades orders on it, so string order has to
+  // match time order — that is the whole reason for the zero padding.
+  const dates = [
+    new Date(2026, 0, 5, 9, 7),
+    new Date(2026, 0, 5, 10, 0),
+    new Date(2026, 9, 1, 0, 0),
+    new Date(2027, 0, 1, 0, 0),
+  ].map(toDatetimeLocal)
+  assert.deepEqual([...dates].sort(), dates)
+})
+
+test('isValidTradeDate accepts the column format and rejects the rest', () => {
+  assert.ok(isValidTradeDate('2026-07-24T14:30'))
+  assert.ok(isValidTradeDate('2026-07-24T14:30:00'))
+  for (const bad of ['', '2026-07-24', '24/07/2026 14:30', 'yesterday', null, undefined, 12345]) {
+    assert.ok(!isValidTradeDate(bad), `should reject ${JSON.stringify(bad)}`)
+  }
 })
 
 test('vocabulary values match what FlowJournal writes', () => {

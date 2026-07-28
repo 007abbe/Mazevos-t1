@@ -101,6 +101,195 @@ table.trades td {
 table.trades .num { text-align: right; font-variant-numeric: tabular-nums; }
 table.trades .mono { font-size: 12px; word-break: normal; }
 
+table.trades tbody tr { cursor: pointer; }
+table.trades tbody tr:hover,
+table.trades tbody tr:focus-visible { background: #1b212a; outline: none; }
+
+.journal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.journal-head .stats { flex: 1; margin-bottom: 0; }
+.journal-head button { width: auto; white-space: nowrap; }
+
+/* ---- Modal ---- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 8, 11, 0.72);
+  overflow-y: auto;
+}
+
+.modal {
+  width: min(760px, 100%);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-head, .modal-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+}
+
+.modal-head { border-bottom: 1px solid var(--line); }
+.modal-head h2 { margin: 0; font-size: 17px; flex: 1; }
+.modal-foot { border-top: 1px solid var(--line); }
+.modal-foot .spacer { flex: 1; }
+.modal-foot button { width: auto; }
+
+.modal-body { padding: 20px; overflow-y: auto; }
+
+button.icon {
+  width: 30px;
+  padding: 0;
+  line-height: 28px;
+  text-align: center;
+}
+
+button.danger { color: var(--red); border-color: #43242a; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 20px;
+}
+
+.modal label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.modal label input, .modal label select, .modal label textarea {
+  margin-top: 5px;
+  margin-bottom: 0;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 14px;
+}
+
+.modal .full { margin-bottom: 16px; }
+.modal textarea { resize: vertical; font-family: inherit; }
+.modal .grid button { margin: 0; }
+
+.tags {
+  padding: 16px;
+  margin-bottom: 18px;
+  background: #0f1319;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.tags-head {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 14px;
+}
+
+.tag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.tag-label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.pill-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.pill {
+  width: auto;
+  margin: 0;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 400;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 999px;
+}
+
+.pill.on { background: var(--blue); border-color: var(--blue); color: #08111f; font-weight: 600; }
+.pill-red.on { background: var(--red); border-color: var(--red); color: #1f0808; }
+
+.tag-input, .tag-num input {
+  width: 92px;
+  margin: 0;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.tag-num { display: block; }
+.tag-num input { margin-top: 5px; width: 100%; }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: center;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.toggle input { width: auto; margin: 0; accent-color: var(--blue); }
+
+button.upload {
+  width: 100%;
+  margin-top: 6px;
+  padding: 22px;
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.preview {
+  position: relative;
+  margin-top: 6px;
+  display: inline-block;
+}
+
+.preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.preview button { position: absolute; top: 8px; right: 8px; background: rgba(6, 8, 11, 0.8); }
+.preview .muted { display: block; margin-top: 4px; font-size: 11px; }
+
 h1 {
   margin: 0 0 4px;
   font-size: 22px;

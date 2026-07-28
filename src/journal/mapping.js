@@ -46,6 +46,24 @@ export function uid() {
 }
 
 /**
+ * `date` is a text column, and the trade list orders by it lexicographically.
+ * That matches chronological order only while every value keeps the exact
+ * `YYYY-MM-DDTHH:mm` shape FlowJournal writes — which is also what an
+ * `<input type="datetime-local">` produces and accepts.
+ */
+export function toDatetimeLocal(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  )
+}
+
+export function isValidTradeDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)
+}
+
+/**
  * Returns a copy stamped with the current time. Every write must go through
  * this: a trade read via fromRow carries the *stored* updatedAt, and writing
  * that value back unchanged leaves the row looking untouched to FlowJournal's
