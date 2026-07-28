@@ -1,5 +1,6 @@
 import './style.css'
 import { getRememberedEmail, onAuthChange, signIn, signOut } from './lib/auth.js'
+import { renderJournal } from './journal/index.js'
 
 const app = document.querySelector('#app')
 
@@ -36,14 +37,19 @@ function renderSignedOut(errorMessage = '') {
 
 function renderSignedIn(user) {
   app.innerHTML = `
-    <div class="card">
-      <h1>Mazevo</h1>
-      <p class="ok">Signed in as <strong>${user.email}</strong></p>
-      <p class="muted mono">user id: ${user.id}</p>
-      <button id="signout">Sign out</button>
+    <div class="card wide">
+      <header class="bar">
+        <div>
+          <h1>Mazevo</h1>
+          <p class="muted">${user.email}</p>
+        </div>
+        <button id="signout" class="ghost">Sign out</button>
+      </header>
+      <section id="journal"></section>
     </div>
   `
   app.querySelector('#signout').addEventListener('click', () => signOut())
+  renderJournal(app.querySelector('#journal'))
 }
 
 renderLoading()
