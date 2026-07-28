@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { toRow, fromRow } from './mapping.js'
+import { toRow, fromRow, stampNow, uid } from './mapping.js'
 import {
   TYPES, STATUSES, SETUP_TYPES, BANDS, TARGETS, REGIMES, BE_REASONS, DAY_TYPES,
   RULE_BROKEN_VALUES,
@@ -120,6 +120,57 @@ test('absent updated_at defaults to now; null and undefined mean the same', () =
 
 test('toRow requires a user id', () => {
   assert.throws(() => toRow({ id: 'x', updatedAt: 1 }), /user id/)
+})
+
+test('stampNow refreshes updatedAt on a trade read back from the DB', () => {
+  // The edit-loses-the-write bug: without stampNow, saving a trade that was
+  // read via fromRow writes back its stored timestamp, so FlowJournal's merge
+  // sees no change and can clobber the edit with its stale local copy.
+  const stored = fromRow(dbRow)
+  assert.equal(stored.updatedAt, 1753363800000)
+
+  const before = Date.now()
+  const saved = toRow(stampNow(stored), USER)
+  assert.ok(saved.updated_at >= before, 'stamp must be current, not the stored value')
+  assert.notEqual(saved.updated_at, 1753363800000)
+})
+
+test('stampNow does not mutate its input', () => {
+  const stored = fromRow(dbRow)
+  stampNow(stored)
+  assert.equal(stored.updatedAt, 1753363800000)
+})
+
+test('uid does not collide, even minting in a tight loop', () => {
+  // `id` is the upsert conflict key, so a collision overwrites a real trade.
+  // FlowJournal's 4-char random suffix fails this at ~4 per 10k.
+  const N = 200000
+  const ids = new Set(Array.from({ length: N }, uid))
+  assert.equal(ids.size, N, 'ids must not collide')
+})
+
+test('uid stays a plain lowercase alphanumeric string', () => {
+  for (const id of Array.from({ length: 100 }, uid)) {
+    assert.match(id, /^[a-z0-9]+$/, 'text column and URL-safe: no dashes, no padding')
+  }
+})
+
+test('uid sorts by creation across milliseconds', async () => {
+  // Only across milliseconds: ids minted inside one millisecond share the
+  // timestamp prefix, so the random suffix decides their relative order.
+  const a = uid()
+  await new Promise((r) => setTimeout(r, 2))
+  const b = uid()
+  assert.ok(a < b, `${a} should sort before ${b}`)
+  assert.equal(a.length, b.length, 'fixed width, so lexicographic order is stable')
+})
+
+test('a new trade round-trips through the full write shape', () => {
+  const created = toRow(stampNow({ id: uid(), num: 1, date: '2026-07-28T09:15', type: 'Short' }), USER)
+  assert.equal(created.user_id, USER)
+  assert.equal(created.pnl, 0)
+  assert.deepEqual(created.rule_broken, [])
+  assert.ok(Number.isInteger(created.updated_at))
 })
 
 test('vocabulary values match what FlowJournal writes', () => {

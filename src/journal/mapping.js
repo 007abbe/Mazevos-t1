@@ -21,6 +21,41 @@
  */
 
 /**
+ * Trade ids are generated client-side — the column is text with no database
+ * default, so a row written without an id fails.
+ *
+ * FlowJournal uses `Date.now().toString(36) + Math.random().toString(36).slice(2,6)`
+ * (trading-journal/index.html:845). That is only 4 random base36 chars, which
+ * collide measurably once several ids are minted inside the same millisecond
+ * (~4 collisions per 10k in a tight loop). Manual journalling never hits that,
+ * but `id` is the upsert conflict key, so a collision silently overwrites an
+ * existing trade — and a bulk import would hit it.
+ *
+ * Same shape (base36 timestamp prefix, so ids sort by creation at millisecond
+ * granularity), wider random suffix from a CSPRNG. FlowJournal treats ids as
+ * opaque strings — it only ever compares them — so the format stays compatible,
+ * and ids it already wrote remain valid.
+ */
+export function uid() {
+  const r = crypto.getRandomValues(new Uint32Array(2))
+  return (
+    Date.now().toString(36) +
+    r[0].toString(36).padStart(7, '0') +
+    r[1].toString(36).padStart(7, '0')
+  )
+}
+
+/**
+ * Returns a copy stamped with the current time. Every write must go through
+ * this: a trade read via fromRow carries the *stored* updatedAt, and writing
+ * that value back unchanged leaves the row looking untouched to FlowJournal's
+ * merge, which would then overwrite the edit with its own stale local copy.
+ */
+export function stampNow(trade) {
+  return { ...trade, updatedAt: Date.now() }
+}
+
+/**
  * `updated_at` is the last-write-wins merge key shared with FlowJournal, which
  * reads it as `Number(r.updated_at) || 0`. A Postgres timestamp string would
  * parse to NaN there, collapse to 0, and make FlowJournal treat every cloud row
