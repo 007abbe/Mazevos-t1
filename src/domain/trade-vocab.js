@@ -1,0 +1,51 @@
+/**
+ * Controlled vocabularies for trade tagging.
+ *
+ * These are the exact string values FlowJournal writes to the production
+ * `trades` table (trading-journal/index.html, the tag pills and selects).
+ * Both apps write the same rows, so these values are a compatibility contract —
+ * changing one means migrating existing rows.
+ *
+ * Agent-agnostic and UI-free: forms read their options from here, they do not
+ * define them.
+ */
+
+export const TYPES = ['Long', 'Short']
+
+export const STATUSES = ['Open', 'TP', 'SL', 'BE', 'TP1+BE']
+
+export const SETUP_TYPES = ['A', 'B', 'C']
+
+export const BANDS = ['+2.6σ', '+2σ', '-2σ', '-2.6σ']
+
+/** Suggested targets. `target` also accepts free text, so this is not exhaustive. */
+export const TARGETS = ['VWAP', 'POC', 'HVN']
+
+export const REGIMES = ['trend', 'balance', 'volatile']
+
+/** Only meaningful when `be_moved` is true; FlowJournal nulls it otherwise. */
+export const BE_REASONS = ['fear', 'structure']
+
+export const DAY_TYPES = [
+  'Trend Day',
+  'Double Distribution',
+  'Normal Day',
+  'Normal Variation',
+  'Neutral Day',
+  'Neutral Extreme',
+  'P-shape',
+  'b-shape',
+]
+
+/** Stored as a Postgres text[]. Values are snake_case; labels are for display. */
+export const RULES_BROKEN = [
+  { value: 'early_entry', label: 'Early entry' },
+  { value: 'chased_entry', label: 'Chased entry' },
+  { value: 'no_away_stack', label: 'No away-stack' },
+  { value: 'size_over_cap', label: 'Size over cap' },
+  { value: 'traded_news', label: 'Traded news' },
+  { value: 'be_fear', label: 'BE from fear' },
+  { value: 'other', label: 'Other' },
+]
+
+export const RULE_BROKEN_VALUES = RULES_BROKEN.map((r) => r.value)
