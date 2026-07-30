@@ -10,17 +10,12 @@
  * holding a session; taking structured data against a fixed template bounds it
  * to Finski briefs.
  *
- * Auth: deployed functions verify the caller's JWT by default, so an
- * unauthenticated request never reaches this code. Deploy without
- * `--no-verify-jwt`.
+ * Auth: `verify_jwt` is necessary but not sufficient — the public anon key is a
+ * valid project JWT. Every request is resolved to a real signed-in user via
+ * `requireUser`. Deploy without `--no-verify-jwt`.
  */
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
+import { CORS, json, requireUser } from '../_shared/auth.ts'
 
 const MODEL = 'claude-sonnet-5'
 
@@ -34,12 +29,6 @@ const MAX_TOKENS = 4000
 const EFFORT = 'low'
 
 const LEVELS = ['LOW', 'ELEVATED', 'HIGH']
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
-  })
 
 /** Trims and bounds any caller-supplied string before it reaches the prompt. */
 const text = (value: unknown, max = 200): string =>
@@ -135,6 +124,9 @@ RISK
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return json({ error: 'Use POST' }, 405)
+
+  const user = await requireUser(req)
+  if (!user) return json({ error: 'Sign in required.' }, 401)
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) {

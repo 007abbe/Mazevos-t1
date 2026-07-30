@@ -488,3 +488,63 @@ pre.brief {
   letter-spacing: normal;
   font-size: 14px;
 }
+
+/* ---- DOM trade picker ---- */
+.pick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.pick-actions button {
+  width: auto;
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+.pick-actions .muted { margin-left: auto; font-size: 12px; }
+
+.pick-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  margin-bottom: 14px;
+}
+
+.pick-list > .muted, .pick-list > .err { padding: 14px; margin: 0; }
+
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #1c2129;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pick-row:last-child { border-bottom: none; }
+.pick-row:hover { background: #1b212a; }
+.pick-row input { width: auto; margin: 0; accent-color: var(--blue); }
+
+.pick-num { width: 44px; color: var(--muted); }
+.pick-date { width: 118px; color: var(--muted); }
+.pick-dir { width: 44px; }
+.pick-setup { width: 74px; }
+.pick-setup .muted { font-size: 12px; }
+.pick-pnl { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.stats-block { margin-top: 10px; }
+
+.stats-block summary {
+  padding: 8px 2px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stats-block summary:hover { color: var(--text); }
+.stats-block pre.brief { max-height: 420px; overflow-y: auto; font-size: 11px; }

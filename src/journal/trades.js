@@ -36,6 +36,36 @@ export async function listTrades({ limit = 500 } = {}) {
   return data ?? []
 }
 
+/**
+ * Every column DOM's analysis reads — the model tags, the sequencing fields,
+ * and the trader's own notes — but *not* `image`, which holds base64
+ * screenshots and would dominate the response for a large selection.
+ */
+const ANALYSIS_COLUMNS = `
+  id, num, date, type, status, pnl, risk, rr, thesis, hindsight,
+  setup_type, band_touched, away_stack, stack_ratio, entry_delay_sec,
+  planned_stop, actual_exit, target, be_moved, be_reason, regime, day_type,
+  news_window, rule_broken, updated_at
+`
+
+/**
+ * Trades for DOM, mapped through `fromRow`.
+ *
+ * The mapping is not optional: Postgres returns numerics as strings, and the
+ * statistics module does arithmetic on `pnl` and `risk`. Unmapped rows would
+ * produce quietly wrong numbers rather than an error.
+ */
+export async function listTradesForAnalysis({ limit = 500 } = {}) {
+  const { data, error } = await supabase
+    .from('trades')
+    .select(ANALYSIS_COLUMNS)
+    .order('date', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return (data ?? []).map(fromRow)
+}
+
 /** One full trade, including the heavy image/thesis/hindsight fields. */
 export async function getTrade(id) {
   const { data, error } = await supabase
