@@ -42,10 +42,23 @@ export const FOMC =
  * top-tier releases above — so they carry their own ELEVATED rule rather than
  * joining MAJOR_RELEASE, which drives the HIGH "not yet released" path.
  *
+ * They do share the post-release digestion window: these move the tape the way
+ * CPI does, and the first half hour after the print is when that happens. The
+ * tier difference is how bad an unreleased one is, not how the tape behaves
+ * once it lands.
+ *
  * Growth prints (Advance GDP and friends) are deliberately out: they move the
  * tape, but not the way an inflation surprise does.
  */
 export const SECOND_TIER_INFLATION = /Core PCE|PCE Price Index/i
+
+/**
+ * Prints whose release the tape needs time to absorb. Both tiers qualify — the
+ * digestion window is about what just happened, not about what was scheduled.
+ */
+const needsDigestion = (event) =>
+  (MAJOR_RELEASE.test(event.title) || SECOND_TIER_INFLATION.test(event.title)) &&
+  event.impact === 'High'
 
 export const VIX_HIGH = 28
 export const VIX_ELEVATED_FLOOR = 20
@@ -137,7 +150,7 @@ export function computeModelRisk({
     )
 
   events
-    .filter((e) => MAJOR_RELEASE.test(e.title) && e.impact === 'High')
+    .filter(needsDigestion)
     .forEach((e) => {
       const ago = now - e.dt.getTime()
       if (ago > 0 && ago < DIGESTION_MS) {

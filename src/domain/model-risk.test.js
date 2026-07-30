@@ -170,6 +170,48 @@ test('a second-tier print stops counting once it has been released', () => {
   assert.deepEqual(result.triggered, [])
 })
 
+test('a second-tier print inside the digestion window is ELEVATED', () => {
+  // 10 minutes before NOW — the half hour where PCE moves the tape like CPI.
+  const result = risk({
+    events: [event('Core PCE Price Index m/m', 'High', '2026-07-29T11:50:00Z')],
+  })
+
+  assert.equal(result.level, 'ELEVATED')
+  assert.deepEqual(result.triggered, [
+    'Core PCE Price Index m/m released 10 min ago (<30 min digestion)',
+  ])
+})
+
+test('both tiers share the same digestion window', () => {
+  const digestionAt = (title, iso) =>
+    risk({ events: [event(title, 'High', iso)] }).triggered.length
+
+  for (const title of ['CPI m/m', 'Core PCE Price Index m/m']) {
+    assert.equal(digestionAt(title, '2026-07-29T11:50:00Z'), 1, `${title} at 10 min`)
+    assert.equal(digestionAt(title, '2026-07-29T11:31:00Z'), 1, `${title} at 29 min`)
+    assert.equal(digestionAt(title, '2026-07-29T11:29:00Z'), 0, `${title} at 31 min`)
+  }
+})
+
+test('a digesting second-tier print does not double-fire as pre-release', () => {
+  const result = risk({
+    events: [event('Core PCE Price Index m/m', 'High', '2026-07-29T11:50:00Z')],
+  })
+  assert.equal(result.triggered.length, 1)
+})
+
+test('two prints digesting at once are both reported, still ELEVATED', () => {
+  const result = risk({
+    events: [
+      event('CPI m/m', 'High', '2026-07-29T11:50:00Z'),
+      event('Core PCE Price Index m/m', 'High', '2026-07-29T11:50:00Z'),
+    ],
+  })
+
+  assert.equal(result.level, 'ELEVATED')
+  assert.equal(result.triggered.length, 2)
+})
+
 test('second-tier only applies to High-impact prints', () => {
   const result = risk({
     events: [event('Core PCE Price Index m/m', 'Medium', '2026-07-29T12:30:00Z')],
