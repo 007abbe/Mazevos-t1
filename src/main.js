@@ -1,8 +1,19 @@
 import './style.css'
 import { getRememberedEmail, onAuthChange, signIn, signOut } from './lib/auth.js'
 import { renderJournal } from './journal/index.js'
+import { finski } from './agents/finski/index.js'
 
 const app = document.querySelector('#app')
+
+/**
+ * The journal plus every agent, as one list of views. Agents are mounted
+ * through the same contract, so adding DOM or Gnosis is one import and one
+ * array entry.
+ */
+const VIEWS = [
+  { id: 'journal', title: 'Journal', mount: renderJournal },
+  finski,
+]
 
 function renderLoading() {
   app.innerHTML = `<div class="card"><p class="muted">Checking session…</p></div>`
@@ -45,11 +56,38 @@ function renderSignedIn(user) {
         </div>
         <button id="signout" class="ghost">Sign out</button>
       </header>
-      <section id="journal"></section>
+      <nav class="tabs">
+        ${VIEWS.map(
+          (v) => `<button type="button" class="tab" data-view="${v.id}">${v.title}</button>`
+        ).join('')}
+      </nav>
+      <p class="muted" id="view-subtitle"></p>
+      <section id="view"></section>
     </div>
   `
+
   app.querySelector('#signout').addEventListener('click', () => signOut())
-  renderJournal(app.querySelector('#journal'))
+
+  const target = app.querySelector('#view')
+  const subtitle = app.querySelector('#view-subtitle')
+
+  const show = (id) => {
+    const view = VIEWS.find((v) => v.id === id) ?? VIEWS[0]
+
+    app.querySelectorAll('.tab').forEach((tab) => {
+      tab.classList.toggle('on', tab.dataset.view === view.id)
+    })
+    subtitle.textContent = view.subtitle ?? ''
+    target.innerHTML = ''
+    view.mount(target)
+  }
+
+  app.querySelector('.tabs').addEventListener('click', (event) => {
+    const id = event.target.closest('.tab')?.dataset.view
+    if (id) show(id)
+  })
+
+  show(VIEWS[0].id)
 }
 
 renderLoading()

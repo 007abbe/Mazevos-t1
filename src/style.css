@@ -7,6 +7,7 @@
   --blue: #5b9dff;
   --green: #4ec98a;
   --red: #ff6b6b;
+  --amber: #e8b04b;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -326,3 +327,164 @@ button {
 }
 
 button:disabled { opacity: 0.6; cursor: default; }
+
+/* ---- Agents ---- */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  width: auto;
+  margin: 0 0 -1px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom-color: var(--line);
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.tab.on {
+  color: var(--text);
+  border-color: var(--line);
+  border-bottom-color: var(--card);
+  background: var(--card);
+  font-weight: 600;
+}
+
+#view-subtitle { margin: 0 0 18px; }
+
+.agent-inputs {
+  padding: 16px;
+  margin-bottom: 18px;
+  background: #0f1319;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.agent-inputs .grid { margin-bottom: 14px; }
+
+.agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.agent-actions button { width: auto; }
+
+.agent-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+.agent-section button {
+  width: auto;
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* ---- Model-risk banner ---- */
+.banner {
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.banner-level {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.banner-rules {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.banner-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.banner-low { border-color: var(--green); background: rgba(78, 201, 138, 0.08); }
+.banner-low .banner-level { color: var(--green); }
+.banner-elevated { border-color: var(--amber); background: rgba(232, 176, 75, 0.08); }
+.banner-elevated .banner-level { color: var(--amber); }
+.banner-high { border-color: var(--red); background: rgba(255, 107, 107, 0.08); }
+.banner-high .banner-level { color: var(--red); }
+
+/* ---- Brief text + history ---- */
+pre.brief {
+  margin: 0;
+  padding: 14px;
+  background: #0f1319;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.history-row { border-bottom: 1px solid var(--line); }
+
+.history-row summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 2px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.history-row summary:hover { background: #1b212a; }
+.history-row[open] summary { border-bottom: 1px solid var(--line); }
+.history-row pre.brief { margin: 10px 0; font-size: 11px; }
+
+.level { font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.level-low { color: var(--green); }
+.level-elevated { color: var(--amber); }
+.level-high { color: var(--red); }
+
+/* Labels outside the modal need the same treatment .modal label gets. */
+.agent-inputs label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.agent-inputs label input {
+  margin-top: 5px;
+  margin-bottom: 0;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 14px;
+}

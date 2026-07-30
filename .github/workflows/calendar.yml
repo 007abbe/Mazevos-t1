@@ -1,0 +1,34 @@
+name: Fetch FF calendar
+
+on:
+  schedule:
+    - cron: '17 */6 * * *' # every 6 hours
+  workflow_dispatch: # + manual run
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # public/, not data/ — Vite copies public/ into dist/ verbatim, which is
+      # what makes the file reachable at <base>/data/ff_calendar.json on Pages.
+      - name: Fetch calendar
+        run: |
+          mkdir -p public/data
+          curl -sf https://nfs.faireconomy.media/ff_calendar_thisweek.json -o public/data/ff_calendar.json
+          python3 -c "import json,sys; d=json.load(open('public/data/ff_calendar.json')); sys.exit('expected a JSON array') if not isinstance(d, list) else None"
+
+      # Committing here triggers the Pages deploy, which is the point: the JSON
+      # is baked into the build, so a fresh calendar only reaches the browser
+      # once the site rebuilds.
+      - name: Commit if changed
+        run: |
+          git config user.name "finski-bot"
+          git config user.email "actions@github.com"
+          git add public/data/ff_calendar.json
+          git diff --cached --quiet || git commit -m "calendar update"
+          git push
