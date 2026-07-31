@@ -9,11 +9,20 @@
  * Agents do not know about navigation, each other, or the shell. The shell
  * hands over an element and gets out of the way.
  *
+ * @typedef {object} ViewContext
+ * @property {(id: string) => void} navigate switches to another view by id
+ *
  * @typedef {object} Agent
  * @property {string} id stable key, used for nav state and storage
  * @property {string} title shown in navigation
  * @property {string} [subtitle] one line, shown above the agent's own UI
- * @property {(el: HTMLElement) => void|Promise<void>} mount renders into `el`
+ * @property {(el: HTMLElement, ctx: ViewContext) => void|Promise<void>} mount renders into `el`
+ * @property {() => void} [unmount] releases anything `mount` acquired
+ *
+ * `unmount` is optional because most views own nothing beyond their DOM, which
+ * the shell discards anyway. A view that starts a timer, an animation loop or
+ * an observer must define it — otherwise those keep running against detached
+ * elements for the rest of the session.
  */
 
 const REQUIRED = { id: 'string', title: 'string', mount: 'function' }
@@ -38,6 +47,10 @@ export function defineAgent(agent) {
 
   if (!/^[a-z][a-z0-9-]*$/.test(agent.id)) {
     throw new TypeError(`Agent id "${agent.id}" must be lowercase kebab-case`)
+  }
+
+  if (agent.unmount !== undefined && typeof agent.unmount !== 'function') {
+    throw new TypeError(`Agent "${agent.id}" has a non-function unmount`)
   }
 
   return Object.freeze(agent)

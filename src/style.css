@@ -622,3 +622,36 @@ pre.brief {
 .level-t1 { color: var(--green); }
 .level-t2 { color: var(--amber); }
 .level-t3 { color: var(--red); }
+
+/* ---- Office ---- */
+.office-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 320px;
+  padding: 8px;
+  background: #0f1319;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.office-canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.office-tip {
+  position: absolute;
+  z-index: 2;
+  padding: 5px 9px;
+  background: rgba(6, 8, 11, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  pointer-events: none;
+  white-space: nowrap;
+}

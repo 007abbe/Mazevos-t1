@@ -4,6 +4,7 @@ import { renderJournal } from './journal/index.js'
 import { dom } from './agents/dom/index.js'
 import { finski } from './agents/finski/index.js'
 import { gnosis } from './agents/gnosis/index.js'
+import { office } from './office/index.js'
 
 const app = document.querySelector('#app')
 
@@ -17,6 +18,7 @@ const VIEWS = [
   dom,
   gnosis,
   finski,
+  office,
 ]
 
 function renderLoading() {
@@ -75,15 +77,23 @@ function renderSignedIn(user) {
   const target = app.querySelector('#view')
   const subtitle = app.querySelector('#view-subtitle')
 
+  /** The view currently mounted, so it can be torn down before the next one. */
+  let current = null
+
   const show = (id) => {
     const view = VIEWS.find((v) => v.id === id) ?? VIEWS[0]
+
+    // Clearing innerHTML detaches the DOM but does not stop anything a view
+    // started — timers, animation loops, observers. Ask it to clean up first.
+    current?.unmount?.()
+    current = view
 
     app.querySelectorAll('.tab').forEach((tab) => {
       tab.classList.toggle('on', tab.dataset.view === view.id)
     })
     subtitle.textContent = view.subtitle ?? ''
     target.innerHTML = ''
-    view.mount(target)
+    view.mount(target, { navigate: show })
   }
 
   app.querySelector('.tabs').addEventListener('click', (event) => {

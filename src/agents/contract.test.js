@@ -30,3 +30,17 @@ test('ids are lowercase kebab-case so they are safe as nav and storage keys', ()
 test('subtitle is optional', () => {
   assert.equal(defineAgent(valid).subtitle, undefined)
 })
+
+test('unmount is optional, since most views own nothing to release', () => {
+  assert.equal(defineAgent(valid).unmount, undefined)
+})
+
+test('a declared unmount must actually be callable', () => {
+  const teardown = () => {}
+  assert.equal(defineAgent({ ...valid, unmount: teardown }).unmount, teardown)
+
+  // Caught at import rather than at the moment the shell switches away, which
+  // is when a broken teardown would otherwise leave a loop running.
+  assert.throws(() => defineAgent({ ...valid, unmount: 'nope' }), /non-function unmount/)
+  assert.throws(() => defineAgent({ ...valid, unmount: true }), /non-function unmount/)
+})
