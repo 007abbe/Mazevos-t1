@@ -3,6 +3,7 @@ import { getRememberedEmail, onAuthChange, signIn, signOut } from './lib/auth.js
 import { renderJournal } from './journal/index.js'
 import { dom } from './agents/dom/index.js'
 import { finski } from './agents/finski/index.js'
+import { gnosis } from './agents/gnosis/index.js'
 
 const app = document.querySelector('#app')
 
@@ -14,6 +15,7 @@ const app = document.querySelector('#app')
 const VIEWS = [
   { id: 'journal', title: 'Journal', mount: renderJournal },
   dom,
+  gnosis,
   finski,
 ]
 

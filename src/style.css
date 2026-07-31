@@ -548,3 +548,77 @@ pre.brief {
 
 .stats-block summary:hover { color: var(--text); }
 .stats-block pre.brief { max-height: 420px; overflow-y: auto; font-size: 11px; }
+
+/* ---- Gnosis scan preview ---- */
+.scan-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px 16px;
+  padding: 12px 14px;
+  background: #0f1319;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.scan-summary b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.scan-block { margin-top: 10px; }
+
+.scan-block summary {
+  padding: 8px 2px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.scan-block summary:hover { color: var(--text); }
+
+.scan-row {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--card);
+}
+
+.scan-row-error { border-color: #43242a; }
+
+.scan-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.scan-path { font-size: 11px; color: var(--text); word-break: break-all; }
+.scan-meta { font-size: 11px; margin: 4px 0 0; }
+.scan-meta em { color: var(--text); font-style: normal; }
+
+.scan-patch {
+  margin: 0;
+  padding: 8px 10px;
+  background: #0f1319;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--green);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--green);
+  white-space: pre-wrap;
+}
+
+.scan-warnings {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--amber);
+}
+
+.level-t1 { color: var(--green); }
+.level-t2 { color: var(--amber); }
+.level-t3 { color: var(--red); }
