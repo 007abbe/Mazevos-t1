@@ -1,6 +1,24 @@
 /**
- * Pure stats over a list of trade rows. No Supabase, no DOM — safe to move to
- * src/domain/ if these grow into real trading logic.
+ * Pure stats for the journal header tiles. No Supabase, no DOM.
+ *
+ * Deliberately separate from `src/domain/trade-stats.js`, which computes DOM's
+ * Layer 1. They look similar — both count wins and losses and average R — but
+ * they answer to different consumers and disagree everywhere it matters:
+ *
+ *   - this one summarises *closed* trades; Layer 1 aggregates whatever it was
+ *     given, and reports `be` as a category rather than dropping it
+ *   - this one rounds for display (integer win rate, raw floats); Layer 1
+ *     rounds for a prompt (1dp, 2dp) and returns null where there is no
+ *     measurement, because 0 would read to the model as a measured zero
+ *   - this one has netPnl, profitFactor, avgWin and avgLoss, which DOM does not
+ *     use; Layer 1 has rSample, insufficient and earlySignal, which the header
+ *     has no use for
+ *
+ * Merging them would mean a shared function parameterised on rounding, null
+ * policy and filtering — more machinery than the dozen lines it would save.
+ * The real cost is elsewhere: Layer 1's output is stored in `dom_reports.stats`
+ * and read by the model, so coupling it to these tiles would let a cosmetic
+ * header tweak change what a past report can be audited against.
  *
  * Only `pnl` and `risk` are read here; both are used by the legacy dashboard
  * query, so they are known to exist on the production table.
