@@ -1,3 +1,4 @@
+import { esc, explainFailure } from '../../lib/ui-text.js'
 import { listTradesForAnalysis } from '../../journal/trades.js'
 import { fmtMoney } from '../../journal/stats.js'
 import { selectThisWeek, selectToday } from './selection.js'
@@ -5,17 +6,7 @@ import { requestReport } from './client.js'
 import { listReports, saveReport } from './reports.js'
 import { generateReport } from './report.js'
 
-const esc = (s) =>
-  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
-
-function explainFailure(error) {
-  const message = error?.message ?? String(error)
-
-  if (/sign in required|jwt|401|unauthor|not signed in/i.test(message)) {
-    return 'Session expired — sign out and back in, then retry.'
-  }
-  return `Analysis failed: ${message}`
-}
+const explain = (error) => explainFailure(error, { prefix: 'Analysis failed' })
 
 /** `2026-07-30 15:30` from the stored `2026-07-30T15:30`. */
 const shortDate = (date) => (date ?? '').slice(0, 16).replace('T', ' ')
@@ -183,11 +174,11 @@ export function renderDom(el) {
           .join(' · ')
       )
 
-      if (!result.saved) setError(explainFailure(result.saveError))
+      if (!result.saved) setError(explain(result.saveError))
       else await loadHistory()
     } catch (err) {
       setStatus('')
-      setError(explainFailure(err))
+      setError(explain(err))
     } finally {
       analyze.disabled = false
       analyze.textContent = 'Analyze selected'

@@ -1,32 +1,18 @@
+import { esc, explainFailure } from '../../lib/ui-text.js'
 import { listTrades } from '../../journal/trades.js'
 import { fetchCalendar } from './calendar.js'
 import { requestBrief } from './client.js'
 import { listBriefs, saveBrief } from './briefs.js'
 import { generateBrief } from './brief.js'
 
-const esc = (s) =>
-  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
-
 const numOrNull = (el) => {
   const value = parseFloat(el.value)
   return Number.isNaN(value) ? null : value
 }
 
-/**
- * A failed function call is usually one of two things, and they need different
- * actions from the trader: re-authenticate, or wait and retry.
- */
-function explainFailure(error) {
-  const message = error?.message ?? String(error)
-
-  if (/jwt|401|unauthor|not signed in/i.test(message)) {
-    return 'Session expired — sign out and back in, then retry.'
-  }
-  if (/Calendar unavailable/i.test(message)) {
-    return message // Already actionable: names the Action to re-run.
-  }
-  return `Brief failed: ${message}`
-}
+/** The calendar's own error already names the Action to re-run. */
+const explain = (error) =>
+  explainFailure(error, { prefix: 'Brief failed', passThrough: [/Calendar unavailable/i] })
 
 const banner = (risk) => `
   <div class="banner banner-${esc(risk.level.toLowerCase())}">
@@ -170,11 +156,11 @@ export function renderFinski(el) {
           .join(' · ')
       )
 
-      if (!result.saved) setError(explainFailure(result.saveError))
+      if (!result.saved) setError(explain(result.saveError))
       else await loadHistory()
     } catch (err) {
       setStatus('')
-      setError(explainFailure(err))
+      setError(explain(err))
     } finally {
       button.disabled = false
       button.textContent = 'Generate brief'

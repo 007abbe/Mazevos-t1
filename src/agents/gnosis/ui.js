@@ -1,3 +1,4 @@
+import { esc } from '../../lib/ui-text.js'
 import { MAX_CHARS } from '../../domain/chunking.js'
 import { classifyNote } from './client.js'
 import { listIndexedFiles, listReportsForExport } from './index-store.js'
@@ -11,9 +12,6 @@ import {
   sha256,
   vaultStatus,
 } from './vault.js'
-
-const esc = (s) =>
-  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
