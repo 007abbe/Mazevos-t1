@@ -11,11 +11,18 @@
  *
  * @typedef {object} ViewContext
  * @property {(id: string) => void} navigate switches to another view by id
+ * @property {HTMLElement} header an empty slot in the topbar, to the left of the
+ *   shell's own controls. A view may fill it with its own actions — the journal
+ *   puts "Log trade" there — or ignore it. The shell empties it between views,
+ *   so nothing leaks from one to the next.
  *
  * @typedef {object} Agent
  * @property {string} id stable key, used for nav state and storage
  * @property {string} title shown in navigation
- * @property {string} [subtitle] one line, shown above the agent's own UI
+ * @property {string} [pageTitle] heading for the topbar; defaults to `title`,
+ *   which lets the sidebar stay terse ("Journal") while the page is explicit
+ *   ("Trade Journal")
+ * @property {string} [subtitle] one line, shown under the page title
  * @property {(el: HTMLElement, ctx: ViewContext) => void|Promise<void>} mount renders into `el`
  * @property {() => void} [unmount] releases anything `mount` acquired
  *

@@ -10,12 +10,15 @@ import { fromRow, toRow, stampNow, uid } from './mapping.js'
  */
 
 /**
- * Columns for the list view. Deliberately excludes the heavy fields
- * (`image`, `thesis`, `hindsight`) — those are fetched per-trade on demand,
- * not for every row in the list.
+ * Columns for the list view. Excludes `image` and `hindsight` — those are
+ * fetched per-trade on demand, not for every row in the list.
+ *
+ * `thesis` is the one heavy field that has to travel with the list: the
+ * journal's search box filters on it client-side, over the trades already
+ * loaded. Fetching it per-row on keystroke would be a query per character.
  */
 const LIST_COLUMNS =
-  'id, num, date, type, status, pnl, risk, rr, setup_type, regime, day_type'
+  'id, num, date, type, status, pnl, risk, rr, thesis, setup_type, regime, day_type'
 
 /**
  * Reads trades for the signed-in user. RLS on the `trades` table scopes rows,

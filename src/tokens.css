@@ -1,0 +1,51 @@
+/*
+ * Design tokens extracted from FlowJournal (github.com/007abbe/trading-journal).
+ * FlowJournal is the visual source of truth; this file is the only place its
+ * palette, type scale, and shape values are written down. Everything in
+ * style.css reads from here — no raw hex below this file.
+ */
+:root {
+  /* Neutrals: near-black background, two surface levels above it. */
+  --bg: #0a0a0b;
+  --surface: #111113;
+  --surface2: #18181b;
+  --border: #2a2a2e;
+  --border2: #3a3a3f;
+
+  --text: #f0f0f2;
+  --text2: #888890;
+  --text3: #555560;
+
+  /* Semantic. Each colour has a -bg for filled badges and a -dim for borders. */
+  --green: #22c55e;
+  --green-dim: #16532e;
+  --green-bg: #0d2b1a;
+  --red: #ef4444;
+  --red-dim: #7f1d1d;
+  --red-bg: #2a0d0d;
+  --amber: #f59e0b;
+  --amber-bg: #2a1f06;
+  --blue: #3b82f6;
+  --blue-bg: #0d1a2e;
+  --purple: #a78bfa;
+
+  /* Accent is green: primary buttons, active links, sync dot. */
+  --accent: #22c55e;
+  --accent-hover: #16a34a;
+  --on-accent: #0a0a0b;
+
+  --font: 'Syne', sans-serif;
+  --mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Scrims. Anything that sits over content rather than beside it. */
+  --overlay: rgba(0, 0, 0, 0.75);
+  --scrim: rgba(0, 0, 0, 0.7);
+  --tip-bg: rgba(17, 17, 19, 0.94);
+
+  /* FlowJournal is flat — borders carry every edge, nothing casts a shadow. */
+  --transition: 0.15s;
+}
