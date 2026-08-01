@@ -3,6 +3,7 @@ import { listTrades } from '../journal/trades.js'
 import { computeStats, fmtMoney, fmtNum } from '../journal/stats.js'
 import { computeStatistics } from './compute.js'
 import { publishSummary } from '../lib/summary.js'
+import { directionBadge, statusBadge } from '../lib/trade-badges.js'
 import { esc, explainFailure } from '../lib/ui-text.js'
 
 /**
@@ -79,9 +80,9 @@ function renderChart({ curve }) {
   `
 }
 
-const breakdownRow = (row, badgeClass) => `
+const breakdownRow = (row, pill) => `
   <div class="break-row">
-    <span class="badge ${badgeClass}">${esc(row.label)}</span>
+    ${pill}
     <span class="break-meta">
       ${row.count} trade${row.count === 1 ? '' : 's'}${
         row.winRate === null ? '' : ` · ${row.winRate}% WR`
@@ -91,21 +92,16 @@ const breakdownRow = (row, badgeClass) => `
   </div>
 `
 
-/** Maps a status to its badge colour; anything unrecognised gets the neutral one. */
-const STATUS_BADGE = { TP: 'badge-tp', SL: 'badge-sl', BE: 'badge-be', 'TP1+BE': 'badge-mixed' }
-
 function renderBreakdowns({ byDirection, byStatus }) {
   return `
     <div class="pair-grid">
       <section class="panel">
         <h2 class="panel-title">By direction</h2>
-        ${byDirection
-          .map((row) => breakdownRow(row, row.label === 'Long' ? 'badge-long' : 'badge-short'))
-          .join('')}
+        ${byDirection.map((row) => breakdownRow(row, directionBadge(row.label))).join('')}
       </section>
       <section class="panel">
         <h2 class="panel-title">By status</h2>
-        ${byStatus.map((row) => breakdownRow(row, STATUS_BADGE[row.label] ?? 'badge-be')).join('')}
+        ${byStatus.map((row) => breakdownRow(row, statusBadge(row.label))).join('')}
       </section>
     </div>
   `

@@ -3,6 +3,7 @@ import { computeStats, fmtMoney, fmtNum } from './stats.js'
 import { openTradeForm } from './form.js'
 import { applyFilters, tradeLabel, SORTS, STATUSES, DIRECTIONS, NO_FILTERS } from './filters.js'
 import { publishSummary } from '../lib/summary.js'
+import { directionBadge, statusBadge } from '../lib/trade-badges.js'
 import { esc, explainFailure } from '../lib/ui-text.js'
 
 const statTile = (label, value, cls = '') =>
@@ -45,6 +46,12 @@ function renderFilters(filters) {
   `
 }
 
+/** Risk as FlowJournal shows it: whole dollars, or an em dash when unrecorded. */
+const fmtRisk = (risk) => {
+  const n = Number(risk ?? 0)
+  return n > 0 ? `$${n.toFixed(0)}` : '—'
+}
+
 function renderRows(trades) {
   return trades
     .slice(0, 50)
@@ -54,11 +61,11 @@ function renderRows(trades) {
         <tr data-id="${esc(t.id)}" tabindex="0">
           <td class="mono">${esc(tradeLabel(t))}</td>
           <td class="mono">${esc(t.date ?? '')}</td>
-          <td>${esc(t.type ?? '')}</td>
-          <td>${esc(t.status ?? '')}</td>
+          <td>${directionBadge(t.type)}</td>
+          <td>${statusBadge(t.status)}</td>
           <td>${esc(t.setup_type ?? '')}</td>
-          <td class="mono num">${esc(t.risk ?? '')}</td>
-          <td class="mono num ${pnl >= 0 ? 'ok' : 'bad'}">${fmtMoney(pnl)}</td>
+          <td class="num risk-cell">${fmtRisk(t.risk)}</td>
+          <td class="num ${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${fmtMoney(pnl)}</td>
         </tr>
       `
     })

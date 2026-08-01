@@ -288,6 +288,35 @@ table.trades tr:last-child td { border-bottom: none; }
 table.trades .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 table.trades .mono { font-size: 12px; word-break: normal; color: var(--text2); }
 
+/* Capital at risk reads as a warning colour, not as a neutral figure. */
+.risk-cell { font-family: var(--mono); font-size: 12px; color: var(--amber); }
+
+.pnl-pos { font-family: var(--mono); font-weight: 500; color: var(--green); }
+.pnl-neg { font-family: var(--mono); font-weight: 500; color: var(--red); }
+
+/*
+ * ---- Status and direction pills ----
+ * Shared by the journal table and the Statistics breakdowns; the class names
+ * come from src/lib/trade-badges.js. Long reuses the TP green and Short the SL
+ * red, which is what FlowJournal does — same tokens, clearer names.
+ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-long, .badge-tp { background: var(--green-bg); color: var(--green); }
+.badge-short, .badge-sl { background: var(--red-bg); color: var(--red); }
+.badge-mixed { background: var(--amber-bg); color: var(--amber); }
+.badge-open { background: var(--blue-bg); color: var(--blue); }
+.badge-be { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+
 table.trades tbody tr { cursor: pointer; transition: background 0.1s; }
 table.trades tbody tr:hover,
 table.trades tbody tr:focus-visible { background: var(--surface2); outline: none; }
@@ -626,22 +655,6 @@ button:disabled:hover { background: var(--accent); border-color: var(--accent); 
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 9px;
-  border-radius: 20px;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.badge-long, .badge-tp { background: var(--green-bg); color: var(--green); }
-.badge-short, .badge-sl { background: var(--red-bg); color: var(--red); }
-.badge-mixed { background: var(--amber-bg); color: var(--amber); }
-.badge-be { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
 
 /* ---- Agents ---- */
 .agent-inputs {
