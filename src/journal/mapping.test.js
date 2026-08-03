@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { toRow, fromRow, stampNow, uid, toDatetimeLocal, isValidTradeDate } from './mapping.js'
 import {
-  TYPES, STATUSES, SETUP_TYPES, BANDS, TARGETS, REGIMES, BE_REASONS, DAY_TYPES,
+  TYPES, STATUSES, SETUP_TYPES, BANDS, TARGETS, REGIMES, GAMMA_REGIMES,
+  BE_REASONS, DAY_TYPES,
   RULE_BROKEN_VALUES,
 } from '../domain/trade-vocab.js'
 
@@ -23,16 +24,18 @@ const dbRow = {
   hindsight: 'Held too long',
   image: 'data:image/jpeg;base64,/9j/4AAQ',
   setup_type: 'B',
-  band_touched: '-2σ',
+  band_touched: ['-2σ'],
   away_stack: true,
   stack_ratio: '1.8',
   entry_delay_sec: 12,
   planned_stop: '19850.25',
   actual_exit: '19912.75',
-  target: 'VWAP',
+  target: ['VWAP'],
   be_moved: true,
   be_reason: 'structure',
   regime: 'trend',
+  gamma_regime: 'positive',
+  major_regime: true,
   day_type: 'Normal Variation',
   news_window: false,
   rule_broken: ['early_entry', 'traded_news'],
@@ -59,8 +62,8 @@ test('round-trip covers the full column set — no field silently dropped', () =
     'id', 'user_id', 'num', 'date', 'type', 'status', 'pnl', 'risk', 'rr',
     'thesis', 'hindsight', 'image', 'updated_at', 'setup_type', 'band_touched',
     'away_stack', 'stack_ratio', 'entry_delay_sec', 'planned_stop',
-    'actual_exit', 'target', 'be_moved', 'be_reason', 'regime', 'day_type',
-    'news_window', 'rule_broken',
+    'actual_exit', 'target', 'be_moved', 'be_reason', 'regime', 'gamma_regime',
+    'major_regime', 'day_type', 'news_window', 'rule_broken',
   ]
   assert.deepEqual(Object.keys(toRow(fromRow(dbRow), USER)).sort(), [...COLUMNS].sort())
 })
@@ -204,8 +207,9 @@ test('vocabulary values match what FlowJournal writes', () => {
   assert.deepEqual(STATUSES, ['Open', 'TP', 'SL', 'BE', 'TP1+BE'])
   assert.deepEqual(SETUP_TYPES, ['A', 'B', 'C'])
   assert.deepEqual([...BANDS].sort(), ['+2.6σ', '+2σ', '-2.6σ', '-2σ'].sort())
-  assert.deepEqual(TARGETS, ['VWAP', 'POC', 'HVN'])
+  assert.deepEqual(TARGETS, ['VWAP', 'POC', 'HVN', 'Major putwall', 'Major callwall'])
   assert.deepEqual(REGIMES, ['trend', 'balance', 'volatile'])
+  assert.deepEqual(GAMMA_REGIMES, ['positive', 'negative'])
   assert.deepEqual(BE_REASONS, ['fear', 'structure'])
   assert.equal(DAY_TYPES.length, 8)
   assert.deepEqual(
@@ -219,8 +223,9 @@ test('the sample row only uses valid vocabulary values', () => {
   assert.ok(TYPES.includes(t.type))
   assert.ok(STATUSES.includes(t.status))
   assert.ok(SETUP_TYPES.includes(t.setup_type))
-  assert.ok(BANDS.includes(t.band_touched))
+  assert.ok(t.band_touched.every((b) => BANDS.includes(b)))
   assert.ok(REGIMES.includes(t.regime))
+  assert.ok(GAMMA_REGIMES.includes(t.gamma_regime))
   assert.ok(BE_REASONS.includes(t.be_reason))
   assert.ok(DAY_TYPES.includes(t.day_type))
   assert.ok(t.rule_broken.every((r) => RULE_BROKEN_VALUES.includes(r)))

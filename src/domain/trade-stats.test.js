@@ -4,6 +4,7 @@ import {
   aggregate,
   computeTradeStats,
   groupBy,
+  groupByEach,
   rMultiple,
   EARLY_SIGNAL_MAX,
   MIN_SAMPLE,
@@ -21,9 +22,9 @@ const trade = (overrides = {}) => ({
   pnl: 100,
   risk: 50,
   setup_type: 'A',
-  band_touched: '-2σ',
+  band_touched: ['-2σ'],
   away_stack: true,
-  target: 'VWAP',
+  target: ['VWAP'],
   regime: 'balance',
   day_type: 'Normal Day',
   be_reason: null,
@@ -294,4 +295,25 @@ test('stats are correct on rows mapped from Postgres string numerics', () => {
   assert.equal(stats.overall.avgR, 0.88)
   assert.equal(stats.byEntryDelay['10-30s'].n, 2)
   assert.deepEqual(stats.ruleBroken.early_entry, { count: 2, totalR: 1.75 })
+})
+
+test('groupByEach counts a trade in every tag it carries', () => {
+  const both = trade({ band_touched: ['+2σ', '-2σ'] })
+  const one = trade({ band_touched: ['-2σ'] })
+
+  const groups = groupByEach([both, one], (t) => t.band_touched)
+
+  // Overlapping on purpose: 2 trades, 3 memberships.
+  assert.equal(groups['+2σ'].n, 1)
+  assert.equal(groups['-2σ'].n, 2)
+})
+
+test('groupByEach buckets an empty tag list as untagged', () => {
+  const groups = groupByEach([trade({ target: [] })], (t) => t.target)
+  assert.equal(groups.untagged.n, 1)
+})
+
+test('groupByEach does not iterate a stray scalar character by character', () => {
+  const groups = groupByEach([trade({ target: 'VWAP' })], (t) => t.target)
+  assert.deepEqual(Object.keys(groups), ['untagged'])
 })

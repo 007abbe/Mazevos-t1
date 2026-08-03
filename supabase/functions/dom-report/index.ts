@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
       outcome: text(n.outcome, 4),
       r: typeof n.r === 'number' ? n.r : null,
       setup: text(n.setup, 4) || null,
-      band: text(n.band, 8) || null,
+      bands: Array.isArray(n.bands) ? n.bands.slice(0, 6).map((b) => text(b, 8)) : [],
       away_stack: n.away_stack === true,
       be_reason: text(n.be_reason, 20) || null,
       rules_broken: Array.isArray(n.rules_broken)

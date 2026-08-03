@@ -31,7 +31,7 @@ export function toNotes(trades) {
         outcome: t.pnl > 0 ? 'WIN' : t.pnl < 0 ? 'LOSS' : 'BE',
         r: r == null ? null : Number(r.toFixed(2)),
         setup: t.setup_type || null,
-        band: t.band_touched || null,
+        bands: t.band_touched ?? [],
         away_stack: !!t.away_stack,
         be_reason: t.be_reason || null,
         rules_broken: t.rule_broken ?? [],

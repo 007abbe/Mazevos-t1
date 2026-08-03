@@ -16,8 +16,18 @@
  *   planned_stop     numeric
  *   actual_exit      numeric
  *   rule_broken      text[]   Postgres array, always an array, never null
+ *   band_touched     text[]   was text; see the migration note below
+ *   target           text[]   was text; free text as well as the suggestions
+ *   gamma_regime     text
+ *   major_regime     boolean  null means unanswered, not false
  *   updated_at       bigint   epoch MILLISECONDS — see assertEpochMs below
  *   everything else  text / boolean
+ *
+ * `band_touched` and `target` were single-value text columns, matching
+ * FlowJournal, until they were widened to text[] so a trade could carry more
+ * than one. FlowJournal reads and writes both as scalars
+ * (trading-journal/index.html:880,886), so it can no longer write this table —
+ * it is reference-only from that migration on.
  */
 
 /**
@@ -108,16 +118,19 @@ export function toRow(t, userId) {
     hindsight: t.hindsight ?? null,
     image: t.image ?? null,
     setup_type: t.setup_type ?? null,
-    band_touched: t.band_touched ?? null,
+    band_touched: Array.isArray(t.band_touched) ? t.band_touched : [],
     away_stack: t.away_stack ?? null,
     stack_ratio: t.stack_ratio ?? null,
     entry_delay_sec: t.entry_delay_sec ?? null,
     planned_stop: t.planned_stop ?? null,
     actual_exit: t.actual_exit ?? null,
-    target: t.target ?? null,
+    target: Array.isArray(t.target) ? t.target : [],
     be_moved: t.be_moved ?? null,
     be_reason: t.be_reason ?? null,
     regime: t.regime ?? null,
+    gamma_regime: t.gamma_regime ?? null,
+    // Nullable on purpose: null is "not answered", distinct from a "no".
+    major_regime: t.major_regime ?? null,
     day_type: t.day_type ?? null,
     news_window: t.news_window ?? null,
     rule_broken: Array.isArray(t.rule_broken) ? t.rule_broken : [],
@@ -140,16 +153,18 @@ export function fromRow(r) {
     hindsight: r.hindsight || '',
     image: r.image || null,
     setup_type: r.setup_type || null,
-    band_touched: r.band_touched || null,
+    band_touched: Array.isArray(r.band_touched) ? r.band_touched : [],
     away_stack: r.away_stack == null ? false : !!r.away_stack,
     stack_ratio: r.stack_ratio == null ? null : Number(r.stack_ratio),
     entry_delay_sec: r.entry_delay_sec == null ? null : Number(r.entry_delay_sec),
     planned_stop: r.planned_stop == null ? null : Number(r.planned_stop),
     actual_exit: r.actual_exit == null ? null : Number(r.actual_exit),
-    target: r.target || null,
+    target: Array.isArray(r.target) ? r.target : [],
     be_moved: r.be_moved == null ? false : !!r.be_moved,
     be_reason: r.be_reason || null,
     regime: r.regime || null,
+    gamma_regime: r.gamma_regime || null,
+    major_regime: r.major_regime == null ? null : !!r.major_regime,
     day_type: r.day_type || null,
     news_window: r.news_window == null ? false : !!r.news_window,
     rule_broken: Array.isArray(r.rule_broken) ? r.rule_broken : [],

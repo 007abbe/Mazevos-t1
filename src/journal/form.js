@@ -1,6 +1,6 @@
 import {
-  TYPES, STATUSES, SETUP_TYPES, BANDS, TARGETS, REGIMES, BE_REASONS, DAY_TYPES,
-  RULES_BROKEN,
+  TYPES, STATUSES, SETUP_TYPES, BANDS, TARGETS, REGIMES, GAMMA_REGIMES,
+  BE_REASONS, DAY_TYPES, RULES_BROKEN,
 } from '../domain/trade-vocab.js'
 import { upsertTrade, deleteTrade, getTrade, nextTradeNum } from './trades.js'
 import { toDatetimeLocal, isValidTradeDate } from './mapping.js'
@@ -17,6 +17,10 @@ const numOrNull = (el) => {
 
 const pill = (key, value, label = value) =>
   `<button type="button" class="pill" data-key="${esc(key)}" data-val="${esc(value)}">${esc(label)}</button>`
+
+/** `key` names the Set on `state` this pill toggles membership of. */
+const multiPill = (key, value, label = value, cls = '') =>
+  `<button type="button" class="pill ${cls}" data-multi="${esc(key)}" data-val="${esc(value)}">${esc(label)}</button>`
 
 const options = (values, selected) =>
   values.map((v) => `<option${v === selected ? ' selected' : ''}>${esc(v)}</option>`).join('')
@@ -73,14 +77,7 @@ function template(trade) {
             </div>
             <div class="tag-group">
               <span class="tag-label">Band touched</span>
-              <div class="pill-row">${inOrder(BANDS, BAND_ORDER).map((v) => pill('band_touched', v)).join('')}</div>
-            </div>
-            <div class="tag-group">
-              <span class="tag-label">Target</span>
-              <div class="pill-row">
-                ${TARGETS.map((v) => pill('target', v)).join('')}
-                <input type="text" id="f-target-custom" class="tag-input" placeholder="custom…">
-              </div>
+              <div class="pill-row">${inOrder(BANDS, BAND_ORDER).map((v) => multiPill('band_touched', v)).join('')}</div>
             </div>
             <div class="tag-group">
               <span class="tag-label">Regime</span>
@@ -90,6 +87,34 @@ function template(trade) {
               <span class="tag-label">Day type</span>
               <select class="tag-select" id="f-day-type"><option value="">—</option>${options(DAY_TYPES, trade.day_type)}</select>
             </label>
+          </div>
+
+          <div class="tag-row">
+            <div class="tag-group">
+              <span class="tag-label">Gamma regime</span>
+              <div class="pill-row">${GAMMA_REGIMES.map((v) => pill('gamma_regime', v, cap(v))).join('')}</div>
+            </div>
+            <div class="tag-group">
+              <span class="tag-label">Major regime</span>
+              <div class="pill-row">${pill('major_regime', 'yes', 'Yes')}${pill('major_regime', 'no', 'No')}</div>
+            </div>
+          </div>
+
+          <div class="tag-row">
+            <label class="tag-group">
+              <span class="tag-label">Target</span>
+              <select class="tag-select" id="f-target-add">
+                <option value="">Add…</option>${options(TARGETS)}
+              </select>
+            </label>
+            <label class="tag-group">
+              <span class="tag-label">Custom target</span>
+              <input type="text" id="f-target-custom" class="tag-input" placeholder="custom…">
+            </label>
+            <div class="tag-group">
+              <span class="tag-label">Chosen</span>
+              <div class="pill-row" id="target-chosen"></div>
+            </div>
           </div>
 
           <div class="tag-row">
@@ -112,6 +137,9 @@ function template(trade) {
           <div class="tag-group">
             <span class="tag-label">Rules broken</span>
             <div class="pill-row">
+              ${pill('rule_broken_any', 'yes', 'Yes')}${pill('rule_broken_any', 'no', 'No')}
+            </div>
+            <div class="pill-row" id="grp-rules-broken" hidden>
               ${inOrder(RULES_BROKEN.map((r) => r.value), RULE_ORDER)
                 .map((v) => `<button type="button" class="pill pill-red" data-multi="rule_broken" data-val="${esc(v)}">${esc(v)}</button>`)
                 .join('')}
@@ -151,11 +179,20 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
 
   const state = {
     setup_type: full.setup_type ?? null,
-    band_touched: full.band_touched ?? null,
-    target: TARGETS.includes(full.target) ? full.target : null,
+    band_touched: new Set(full.band_touched ?? []),
+    // Holds suggestions and hand-typed levels alike — the column is free text.
+    target: new Set(full.target ?? []),
     regime: full.regime ?? null,
+    gamma_regime: full.gamma_regime ?? null,
+    // Stored as a nullable boolean; the form speaks yes/no/unanswered.
+    major_regime: full.major_regime == null ? null : full.major_regime ? 'yes' : 'no',
     be_reason: full.be_reason ?? null,
     rule_broken: new Set(full.rule_broken ?? []),
+    // Gates the rule pills. Not a stored field — `rule_broken` alone is what
+    // gets saved, and an empty array already means "none broken". On an
+    // existing trade the stored array answers the question; a new one starts
+    // unanswered rather than presuming a "no".
+    rule_broken_any: full.id ? (full.rule_broken?.length ? 'yes' : 'no') : null,
     image: full.image ?? null,
   }
 
@@ -177,10 +214,35 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
     for (const el of overlay.querySelectorAll('.pill[data-key]')) {
       el.classList.toggle('on', state[el.dataset.key] === el.dataset.val)
     }
+    // `data-multi` names the Set on `state` it belongs to, so band_touched and
+    // rule_broken share one implementation.
     for (const el of overlay.querySelectorAll('.pill[data-multi]')) {
-      el.classList.toggle('on', state.rule_broken.has(el.dataset.val))
+      el.classList.toggle('on', state[el.dataset.multi].has(el.dataset.val))
     }
     $('#grp-be-reason').hidden = !$('#f-be-moved').checked
+    $('#grp-rules-broken').hidden = state.rule_broken_any !== 'yes'
+    renderTargets()
+  }
+
+  /**
+   * Chosen targets, as pills you can click to remove. The dropdown and the
+   * custom field both feed this set, so a trade can carry a suggestion and a
+   * hand-typed level at once.
+   */
+  function renderTargets() {
+    const chosen = [...state.target]
+    $('#target-chosen').innerHTML = chosen.length
+      ? chosen
+          .map((v) => `<button type="button" class="pill on" data-drop-target="${esc(v)}">${esc(v)} ✕</button>`)
+          .join('')
+      : '<span class="muted-tag">None</span>'
+  }
+
+  /** Adds a target if it is non-empty and not already chosen. */
+  function addTarget(value) {
+    const v = String(value ?? '').trim()
+    if (v) state.target.add(v)
+    return !!v
   }
 
   function renderUpload() {
@@ -234,7 +296,9 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
       }
 
       const beMoved = $('#f-be-moved').checked
-      const customTarget = $('#f-target-custom').value.trim()
+      // A custom target left typed but never committed with Enter would
+      // otherwise be silently dropped on save.
+      addTarget($('#f-target-custom').value)
 
       await upsertTrade({
         id: full.id,
@@ -249,17 +313,19 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
         hindsight: $('#f-hindsight').value.trim(),
         image: state.image,
         setup_type: state.setup_type,
-        band_touched: state.band_touched,
+        band_touched: [...state.band_touched],
         away_stack: $('#f-away-stack').checked,
         stack_ratio: numOrNull($('#f-stack-ratio')),
         entry_delay_sec: numOrNull($('#f-entry-delay')),
         planned_stop: numOrNull($('#f-planned-stop')),
         actual_exit: numOrNull($('#f-actual-exit')),
-        target: customTarget || state.target,
+        target: [...state.target],
         be_moved: beMoved,
         // FlowJournal drops the reason when BE wasn't moved; keep that.
         be_reason: beMoved ? state.be_reason : null,
         regime: state.regime,
+        gamma_regime: state.gamma_regime,
+        major_regime: state.major_regime == null ? null : state.major_regime === 'yes',
         day_type: $('#f-day-type').value || null,
         news_window: $('#f-news-window').checked,
         rule_broken: [...state.rule_broken],
@@ -277,14 +343,19 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
 
     const p = e.target.closest('.pill')
     if (p) {
-      if (p.dataset.multi) {
-        state.rule_broken.has(p.dataset.val)
-          ? state.rule_broken.delete(p.dataset.val)
-          : state.rule_broken.add(p.dataset.val)
+      if (p.dataset.dropTarget) {
+        state.target.delete(p.dataset.dropTarget)
+      } else if (p.dataset.multi) {
+        const set = state[p.dataset.multi]
+        set.has(p.dataset.val) ? set.delete(p.dataset.val) : set.add(p.dataset.val)
       } else {
         // Clicking the selected pill again clears it, as in FlowJournal.
         state[p.dataset.key] = state[p.dataset.key] === p.dataset.val ? null : p.dataset.val
-        if (p.dataset.key === 'target') $('#f-target-custom').value = ''
+        // Answering anything but "yes" drops the rules already picked, so the
+        // hidden pills can't save something the form no longer shows.
+        if (p.dataset.key === 'rule_broken_any' && state.rule_broken_any !== 'yes') {
+          state.rule_broken.clear()
+        }
       }
       return syncPills()
     }
@@ -309,13 +380,24 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
     }
   })
 
-  // A custom target and a target pill are mutually exclusive.
-  $('#f-target-custom').addEventListener('input', (e) => {
-    if (e.target.value) {
-      state.target = null
+  // Picking from the dropdown adds a target and resets the control, so the
+  // same list can be used again for a second one.
+  $('#f-target-add').addEventListener('change', (e) => {
+    if (addTarget(e.target.value)) syncPills()
+    e.target.value = ''
+  })
+
+  // Enter commits a custom target. Without this the form would submit-by-habit
+  // and the typed level would sit in the box unrecorded until save.
+  $('#f-target-custom').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    if (addTarget(e.target.value)) {
+      e.target.value = ''
       syncPills()
     }
   })
+
   $('#f-be-moved').addEventListener('change', syncPills)
   $('#f-image').addEventListener('change', (e) => useImageFile(e.target.files[0]))
   document.addEventListener('keydown', onKey)

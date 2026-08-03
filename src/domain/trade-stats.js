@@ -74,6 +74,30 @@ export function groupBy(list, key) {
   )
 }
 
+/**
+ * groupBy for array-valued tags like `band_touched` and `target`.
+ *
+ * A trade tagged with two bands is counted in both buckets, so unlike groupBy
+ * these group sizes sum to MORE than the number of trades. Anything presenting
+ * them — DOM included — must not add them up and call the total a trade count.
+ * A trade with no values lands in `untagged`.
+ */
+export function groupByEach(list, keys) {
+  const groups = {}
+  for (const trade of list) {
+    const values = keys(trade)
+    // Array-checked, not just truthy: a stray scalar would otherwise iterate
+    // its own characters and invent a bucket per letter.
+    for (const k of Array.isArray(values) && values.length ? values : ['untagged']) {
+      ;(groups[k] ??= []).push(trade)
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(groups).map(([k, trades]) => [k, aggregate(trades)])
+  )
+}
+
 const delayBucket = (trade) => {
   if (trade.entry_delay_sec == null) return null
   if (trade.entry_delay_sec <= 10) return DELAY_BUCKETS[0]
@@ -128,9 +152,10 @@ export function computeTradeStats(trades) {
     overall: aggregate(chronological),
     bySetup: groupBy(chronological, (t) => t.setup_type),
     byAwayStack: groupBy(chronological, (t) => (t.away_stack ? 'with_stack' : 'no_stack')),
-    byBand: groupBy(chronological, (t) => t.band_touched),
+    byBand: groupByEach(chronological, (t) => t.band_touched),
     byRegime: groupBy(chronological, (t) => t.regime),
-    byTarget: groupBy(chronological, (t) => t.target),
+    byGammaRegime: groupBy(chronological, (t) => t.gamma_regime),
+    byTarget: groupByEach(chronological, (t) => t.target),
     byDayType: groupBy(chronological, (t) => t.day_type),
     byEntryDelay: groupBy(
       chronological.filter((t) => t.entry_delay_sec != null),

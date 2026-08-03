@@ -18,10 +18,17 @@ export const SETUP_TYPES = ['A', 'B', 'C']
 
 export const BANDS = ['+2.6σ', '+2σ', '-2σ', '-2.6σ']
 
-/** Suggested targets. `target` also accepts free text, so this is not exhaustive. */
-export const TARGETS = ['VWAP', 'POC', 'HVN']
+/**
+ * Suggested targets. `target` also accepts free text, so this is not
+ * exhaustive — the form offers these in a dropdown and takes anything else
+ * typed into its custom field.
+ */
+export const TARGETS = ['VWAP', 'POC', 'HVN', 'Major putwall', 'Major callwall']
 
 export const REGIMES = ['trend', 'balance', 'volatile']
+
+/** Gamma regime. Lowercase values; the form capitalises the labels. */
+export const GAMMA_REGIMES = ['positive', 'negative']
 
 /** Only meaningful when `be_moved` is true; FlowJournal nulls it otherwise. */
 export const BE_REASONS = ['fear', 'structure']
