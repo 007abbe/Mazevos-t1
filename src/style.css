@@ -334,7 +334,7 @@ table.trades tbody tr:focus-visible { background: var(--surface2); outline: none
 }
 
 .modal {
-  width: min(760px, 100%);
+  width: min(680px, 100%);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -350,7 +350,7 @@ table.trades tbody tr:focus-visible { background: var(--surface2); outline: none
   padding: 20px 28px;
 }
 
-.modal-head { border-bottom: 1px solid var(--border); }
+.modal-head { padding: 24px 28px 20px; border-bottom: 1px solid var(--border); }
 .modal-head h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.3px; flex: 1; }
 .modal-foot { border-top: 1px solid var(--border); }
 .modal-foot .spacer { flex: 1; }
@@ -358,17 +358,30 @@ table.trades tbody tr:focus-visible { background: var(--surface2); outline: none
 
 .modal-body { padding: 24px 28px; overflow-y: auto; }
 
+/* FlowJournal's modal close: no box, just the glyph. */
 button.icon {
-  width: 30px;
-  padding: 0;
-  line-height: 28px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  padding: 4px;
+  border: none;
+  border-radius: 6px;
   background: transparent;
-  border-color: var(--border);
   color: var(--text3);
 }
 
 button.icon:hover { background: var(--surface2); color: var(--text); }
+
+button.icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 button.danger {
   background: var(--red-bg);
@@ -403,13 +416,54 @@ button.danger {
   font-size: 13px;
 }
 
-.modal .full { margin-bottom: 16px; }
-.modal textarea { resize: vertical; font-family: var(--font); line-height: 1.6; }
+/*
+ * The base control rule below is `input, button` — it does not reach `select`
+ * or `textarea`, so the box itself has to be drawn here. Without this the
+ * direction/status dropdowns fall back to the native control and the thesis
+ * and hindsight boxes to a default ~20-column field.
+ */
+.modal label select, .modal label textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border var(--transition);
+}
+
+.modal label select { cursor: pointer; }
+.modal label select:focus, .modal label textarea:focus { outline: none; border-color: var(--border2); }
+.modal textarea::placeholder { color: var(--text3); }
+
+/*
+ * The form modal is a single two-column grid: the tags block, the textareas and
+ * the screenshot all span it, so every vertical rhythm in the body comes from
+ * this one gap rather than per-section margins.
+ */
+.modal .grid { grid-template-columns: 1fr 1fr; margin-bottom: 0; }
+.modal .full { grid-column: 1 / -1; margin-bottom: 0; }
+.modal textarea { min-height: 80px; resize: vertical; font-family: var(--font); line-height: 1.6; }
 .modal .grid button { margin: 0; }
 
+/* Blocks that pair a label with something other than a single control. */
+.modal .field { display: flex; flex-direction: column; gap: 6px; }
+
+.modal .form-label {
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .tags {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 14px 16px;
-  margin-bottom: 18px;
+  margin-bottom: 0;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -421,15 +475,25 @@ button.danger {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin-bottom: 14px;
 }
 
-.tag-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+/*
+ * Tag groups hug their content and sit on a shared baseline, so a toggle can
+ * sit next to a 84px number field without either being stretched to a column
+ * width. This is a flex row on purpose — a grid would equalise the widths.
+ */
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px 22px;
-  margin-bottom: 14px;
+  align-items: flex-end;
 }
+
+.modal .tag-group { display: flex; flex-direction: column; gap: 5px; }
+
+/* `.tag-group` is display:flex, which would otherwise defeat the `hidden`
+   attribute that shows and hides the BE-reason pills. */
+.tags [hidden] { display: none; }
 
 .tag-label {
   display: block;
@@ -438,7 +502,6 @@ button.danger {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 6px;
 }
 
 .pill-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
@@ -463,8 +526,7 @@ button.danger {
 .pill.on { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
 .pill-red.on { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 
-.tag-input, .tag-num input {
-  width: 92px;
+.modal .tag-input, .modal .tag-select {
   margin: 0;
   padding: 5px 8px;
   background: var(--surface);
@@ -472,28 +534,70 @@ button.danger {
   font-size: 11px;
 }
 
-.tag-num { display: block; }
-.tag-num input { margin-top: 6px; width: 100%; }
+.modal .tag-input { width: 84px; }
+.modal .tag-select { width: auto; }
+/* The custom-target field sits in a pill row, where it reads better slightly
+   wider than the numeric fields. */
+.modal #f-target-custom { width: 92px; }
 
-.toggle {
+/*
+ * Toggle switch. The checkbox stays the state — it is what the form reads on
+ * save — and is only hidden visually; the track and knob are drawn from it.
+ */
+.modal .tag-toggle {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 7px;
-  align-self: center;
-  text-transform: none;
-  letter-spacing: normal;
+  padding-bottom: 1px;
   font-family: var(--mono);
   font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--text2);
   cursor: pointer;
   user-select: none;
 }
 
-.toggle input { width: auto; margin: 0; accent-color: var(--accent); }
+.modal .tag-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.tswitch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  transition: all var(--transition);
+}
+
+.tswitch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text3);
+  transition: all var(--transition);
+}
+
+.modal .tag-toggle:has(input:checked) { color: var(--text); }
+.tag-toggle input:checked + .tswitch { background: var(--green-bg); border-color: var(--green-dim); }
+.tag-toggle input:checked + .tswitch::after { left: 13px; background: var(--green); }
+.tag-toggle input:focus-visible + .tswitch { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 button.upload {
   width: 100%;
-  margin-top: 6px;
+  margin: 0;
   padding: 24px;
   background: var(--surface2);
   border: 1px dashed var(--border);
@@ -503,22 +607,46 @@ button.upload {
 
 button.upload:hover { border-color: var(--border2); background: var(--surface2); }
 
+button.upload svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin: 0 auto 8px;
+  stroke: var(--text3);
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .preview {
   position: relative;
-  margin-top: 6px;
-  display: inline-block;
+  margin: 0;
 }
 
 .preview img {
   display: block;
-  max-width: 100%;
-  max-height: 260px;
+  width: 100%;
+  max-height: 200px;
+  object-fit: contain;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface2);
 }
 
-.preview button { position: absolute; top: 8px; right: 8px; background: var(--scrim); border-color: transparent; color: var(--text); }
+.preview button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--scrim);
+  color: var(--text);
+}
+
+.preview button svg { width: 12px; height: 12px; stroke-width: 2.5; }
 .preview .muted { display: block; margin-top: 4px; font-size: 11px; }
 
 h1 {
@@ -978,4 +1106,5 @@ pre.brief {
   .sidebar { display: none; }
   .pair-grid { grid-template-columns: 1fr; }
   .search-box { width: 100%; }
+  .modal .grid { grid-template-columns: 1fr; }
 }
