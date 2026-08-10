@@ -11,17 +11,24 @@ const explain = (error) => explainFailure(error, { prefix: 'Analysis failed' })
 /** `2026-07-30 15:30` from the stored `2026-07-30T15:30`. */
 const shortDate = (date) => (date ?? '').slice(0, 16).replace('T', ' ')
 
+/**
+ * STDV's setups are single letters and read as "Setup B"; MM's are named
+ * ("Open-Drive"), so they stand on their own. A trade with neither is untagged.
+ */
+const setupLabel = (trade) =>
+  trade.model === 'MM'
+    ? esc(trade.mm_setup ?? '')
+    : trade.setup_type
+      ? `Setup ${esc(trade.setup_type)}`
+      : ''
+
 const tradeRow = (trade, selected) => `
   <label class="pick-row">
     <input type="checkbox" data-id="${esc(trade.id)}"${selected ? ' checked' : ''}>
     <span class="mono pick-num">#${esc(trade.num)}</span>
     <span class="pick-date">${esc(shortDate(trade.date))}</span>
     <span class="pick-dir">${esc(trade.type ?? '')}</span>
-    <span class="pick-setup">${
-      trade.setup_type
-        ? `Setup ${esc(trade.setup_type)}`
-        : '<span class="muted">untagged</span>'
-    }</span>
+    <span class="pick-setup">${setupLabel(trade) || '<span class="muted">untagged</span>'}</span>
     <span class="mono pick-pnl ${trade.pnl >= 0 ? 'ok' : 'bad'}">${esc(fmtMoney(trade.pnl))}</span>
   </label>
 `

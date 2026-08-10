@@ -470,11 +470,62 @@ button.danger {
 }
 
 .tags-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   color: var(--text3);
   font-family: var(--mono);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/*
+ * Three-position model switch: STDV | x | MM. It decides which tags the panel
+ * below it shows, so it sits in the panel's own header rather than up in the
+ * field grid.
+ */
+.model-switch {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+
+.modal .model-switch .seg {
+  width: auto;
+  min-width: 46px;
+  margin: 0;
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  transition: all 0.12s;
+}
+
+.modal .model-switch .seg:hover { color: var(--text); }
+.modal .model-switch .seg.on {
+  background: var(--blue-bg);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+/* The panel the model switch swaps in and out. It carries the row spacing the
+   `.tags` box used to provide directly, so switching models cannot change it. */
+.tag-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /*

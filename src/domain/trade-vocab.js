@@ -14,7 +14,28 @@ export const TYPES = ['Long', 'Short']
 
 export const STATUSES = ['Open', 'TP', 'SL', 'BE', 'TP1+BE']
 
+/**
+ * Trading models. Which one a trade belongs to decides which tags the form
+ * offers and which columns get written:
+ *   STDV — the original model; every trade logged before `model` existed.
+ *   x    — no model tags at all, just thesis, hindsight and a screenshot.
+ *   MM   — shares regime/gamma/target/BE/rules with STDV, swaps setup A/B/C and
+ *          band touched for its own four setups and an entry price.
+ */
+export const MODELS = ['STDV', 'x', 'MM']
+
+export const DEFAULT_MODEL = 'STDV'
+
+/** STDV's setups. Kept in `setup_type`, which is STDV-only. */
 export const SETUP_TYPES = ['A', 'B', 'C']
+
+/** MM's setups. Kept in `mm_setup`, a separate column from `setup_type`. */
+export const MM_SETUPS = [
+  'Open-Drive',
+  'Open-Test-Drive',
+  'LVN-Momentum-Breakout',
+  'Gamma-wall-Consumption-break',
+]
 
 export const BANDS = ['+2.6σ', '+2σ', '-2σ', '-2.6σ']
 

@@ -2,8 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { toRow, fromRow, stampNow, uid, toDatetimeLocal, isValidTradeDate } from './mapping.js'
 import {
-  TYPES, STATUSES, SETUP_TYPES, BANDS, TARGETS, REGIMES, GAMMA_REGIMES,
-  BE_REASONS, DAY_TYPES,
+  TYPES, STATUSES, MODELS, DEFAULT_MODEL, SETUP_TYPES, MM_SETUPS, BANDS, TARGETS,
+  REGIMES, GAMMA_REGIMES, BE_REASONS, DAY_TYPES,
   RULE_BROKEN_VALUES,
 } from '../domain/trade-vocab.js'
 
@@ -23,12 +23,15 @@ const dbRow = {
   thesis: 'Bounce off -2σ with away-stack',
   hindsight: 'Held too long',
   image: 'data:image/jpeg;base64,/9j/4AAQ',
+  model: 'STDV',
   setup_type: 'B',
+  mm_setup: null,
   band_touched: ['-2σ'],
   away_stack: true,
   stack_ratio: '1.8',
   entry_delay_sec: 12,
   planned_stop: '19850.25',
+  entry_price: null,
   actual_exit: '19912.75',
   target: ['VWAP'],
   be_moved: true,
@@ -60,10 +63,11 @@ test('fromRow -> toRow round-trips every column', () => {
 test('round-trip covers the full column set — no field silently dropped', () => {
   const COLUMNS = [
     'id', 'user_id', 'num', 'date', 'type', 'status', 'pnl', 'risk', 'rr',
-    'thesis', 'hindsight', 'image', 'updated_at', 'setup_type', 'band_touched',
-    'away_stack', 'stack_ratio', 'entry_delay_sec', 'planned_stop',
-    'actual_exit', 'target', 'be_moved', 'be_reason', 'regime', 'gamma_regime',
-    'major_regime', 'day_type', 'news_window', 'rule_broken',
+    'thesis', 'hindsight', 'image', 'updated_at', 'model', 'setup_type',
+    'mm_setup', 'band_touched', 'away_stack', 'stack_ratio', 'entry_delay_sec',
+    'planned_stop', 'entry_price', 'actual_exit', 'target', 'be_moved',
+    'be_reason', 'regime', 'gamma_regime', 'major_regime', 'day_type',
+    'news_window', 'rule_broken',
   ]
   assert.deepEqual(Object.keys(toRow(fromRow(dbRow), USER)).sort(), [...COLUMNS].sort())
 })
@@ -202,10 +206,51 @@ test('isValidTradeDate accepts the column format and rejects the rest', () => {
   }
 })
 
+test('an MM row round-trips its own columns and leaves STDV\'s alone', () => {
+  const mmRow = {
+    ...dbRow,
+    model: 'MM',
+    setup_type: null,
+    mm_setup: 'LVN-Momentum-Breakout',
+    band_touched: [],
+    entry_price: '19875.50',
+  }
+  const t = fromRow(mmRow)
+
+  assert.equal(t.model, 'MM')
+  assert.equal(t.mm_setup, 'LVN-Momentum-Breakout')
+  assert.equal(t.setup_type, null)
+  assert.equal(t.entry_price, 19875.5, 'numeric comes back as a number, not a string')
+  assert.ok(MM_SETUPS.includes(t.mm_setup))
+
+  const back = toRow(t, USER)
+  assert.equal(back.mm_setup, 'LVN-Momentum-Breakout')
+  assert.equal(back.entry_price, 19875.5)
+  assert.deepEqual(back.band_touched, [])
+})
+
+test('a pre-MM row has no model, which the form reads as STDV', () => {
+  // Nothing was backfilled, so every trade logged before the switch existed
+  // comes back with model null.
+  const legacy = fromRow({ id: 'x', setup_type: 'A', updated_at: 1 })
+  assert.equal(legacy.model, null)
+  assert.equal(legacy.mm_setup, null)
+  assert.equal(legacy.entry_price, null)
+  assert.equal(toRow(legacy, USER).model, null, 'reading a row must not invent a model')
+})
+
 test('vocabulary values match what FlowJournal writes', () => {
   assert.deepEqual(TYPES, ['Long', 'Short'])
   assert.deepEqual(STATUSES, ['Open', 'TP', 'SL', 'BE', 'TP1+BE'])
+  assert.deepEqual(MODELS, ['STDV', 'x', 'MM'])
+  assert.ok(MODELS.includes(DEFAULT_MODEL))
   assert.deepEqual(SETUP_TYPES, ['A', 'B', 'C'])
+  assert.deepEqual(MM_SETUPS, [
+    'Open-Drive',
+    'Open-Test-Drive',
+    'LVN-Momentum-Breakout',
+    'Gamma-wall-Consumption-break',
+  ])
   assert.deepEqual([...BANDS].sort(), ['+2.6σ', '+2σ', '-2.6σ', '-2σ'].sort())
   assert.deepEqual(TARGETS, ['VWAP', 'POC', 'HVN', 'Major putwall', 'Major callwall'])
   assert.deepEqual(REGIMES, ['trend', 'balance', 'volatile'])

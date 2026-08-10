@@ -52,6 +52,13 @@ const fmtRisk = (risk) => {
   return n > 0 ? `$${n.toFixed(0)}` : '—'
 }
 
+/**
+ * The setup column, whichever model the trade belongs to. STDV keeps A/B/C in
+ * `setup_type`; MM keeps its own four in `mm_setup`. A trade logged before the
+ * model switch existed has no `model` and is STDV.
+ */
+const tradeSetup = (t) => (t.model === 'MM' ? t.mm_setup : t.setup_type) ?? ''
+
 function renderRows(trades) {
   return trades
     .slice(0, 50)
@@ -63,7 +70,7 @@ function renderRows(trades) {
           <td class="mono">${esc(t.date ?? '')}</td>
           <td>${directionBadge(t.type)}</td>
           <td>${statusBadge(t.status)}</td>
-          <td>${esc(t.setup_type ?? '')}</td>
+          <td>${esc(tradeSetup(t))}</td>
           <td class="num risk-cell">${fmtRisk(t.risk)}</td>
           <td class="num ${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${fmtMoney(pnl)}</td>
         </tr>
