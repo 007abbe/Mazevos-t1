@@ -1,6 +1,6 @@
 import {
-  TYPES, STATUSES, SETUP_TYPES, BANDS, TARGETS, REGIMES, GAMMA_REGIMES,
-  BE_REASONS, DAY_TYPES, RULES_BROKEN,
+  TYPES, STATUSES, MODELS, DEFAULT_MODEL, SETUP_TYPES, MM_SETUPS, BANDS, TARGETS,
+  REGIMES, GAMMA_REGIMES, BE_REASONS, DAY_TYPES, RULES_BROKEN,
 } from '../domain/trade-vocab.js'
 import { upsertTrade, deleteTrade, getTrade, nextTradeNum } from './trades.js'
 import { toDatetimeLocal, isValidTradeDate } from './mapping.js'
@@ -9,8 +9,8 @@ import { compressImage, dataUrlBytes, isImageFile } from './screenshots.js'
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 
-const numOrNull = (el) => {
-  const v = parseFloat(el.value)
+const numOrNull = (value) => {
+  const v = parseFloat(value)
   return Number.isNaN(v) ? null : v
 }
 
@@ -49,7 +49,168 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
 
-function template(trade) {
+/**
+ * Free-typed inputs inside the tag panel, keyed by the name they are held under
+ * in `fields`. The panel is re-rendered whenever the model switch moves, which
+ * destroys these elements — so their values are harvested into `fields` first
+ * and rendered back from it. Without that, switching STDV → MM → STDV would
+ * silently empty every number the trader had already typed.
+ */
+const TEXT_FIELDS = {
+  day_type: '#f-day-type',
+  stack_ratio: '#f-stack-ratio',
+  entry_delay_sec: '#f-entry-delay',
+  planned_stop: '#f-planned-stop',
+  entry_price: '#f-entry-price',
+  actual_exit: '#f-actual-exit',
+}
+
+const CHECK_FIELDS = {
+  away_stack: '#f-away-stack',
+  be_moved: '#f-be-moved',
+  news_window: '#f-news-window',
+}
+
+/** Shared by every model that has tags at all: STDV and MM both log these. */
+const targetRow = () => `
+  <div class="tag-row">
+    <label class="tag-group">
+      <span class="tag-label">Target</span>
+      <select class="tag-select" id="f-target-add">
+        <option value="">Add…</option>${options(TARGETS)}
+      </select>
+    </label>
+    <label class="tag-group">
+      <span class="tag-label">Custom target</span>
+      <input type="text" id="f-target-custom" class="tag-input" placeholder="custom…">
+    </label>
+    <div class="tag-group">
+      <span class="tag-label">Chosen</span>
+      <div class="pill-row" id="target-chosen"></div>
+    </div>
+  </div>`
+
+const beReasonGroup = () => `
+  <div class="tag-group" id="grp-be-reason" hidden>
+    <span class="tag-label">BE reason</span>
+    <div class="pill-row">${inOrder(BE_REASONS, BE_REASON_ORDER).map((v) => pill('be_reason', v, cap(v))).join('')}</div>
+  </div>`
+
+const rulesGroup = () => `
+  <div class="tag-group">
+    <span class="tag-label">Rules broken</span>
+    <div class="pill-row">
+      ${pill('rule_broken_any', 'yes', 'Yes')}${pill('rule_broken_any', 'no', 'No')}
+    </div>
+    <div class="pill-row" id="grp-rules-broken" hidden>
+      ${inOrder(RULES_BROKEN.map((r) => r.value), RULE_ORDER)
+        .map((v) => `<button type="button" class="pill pill-red" data-multi="rule_broken" data-val="${esc(v)}">${esc(v)}</button>`)
+        .join('')}
+    </div>
+  </div>`
+
+const num = (id, label, value, step = '0.25', placeholder = 'price') =>
+  `<label class="tag-group"><span class="tag-label">${label}</span><input class="tag-input" type="number" id="${id}" step="${step}" placeholder="${placeholder}" value="${esc(value)}"></label>`
+
+/** STDV: the original tag set, unchanged. */
+const stdvPanel = (fields) => `
+  <div class="tag-row">
+    <div class="tag-group">
+      <span class="tag-label">Setup</span>
+      <div class="pill-row">${SETUP_TYPES.map((v) => pill('setup_type', v)).join('')}</div>
+    </div>
+    <div class="tag-group">
+      <span class="tag-label">Band touched</span>
+      <div class="pill-row">${inOrder(BANDS, BAND_ORDER).map((v) => multiPill('band_touched', v)).join('')}</div>
+    </div>
+    <div class="tag-group">
+      <span class="tag-label">Regime</span>
+      <div class="pill-row">${REGIMES.map((v) => pill('regime', v, cap(v))).join('')}</div>
+    </div>
+    <label class="tag-group">
+      <span class="tag-label">Day type</span>
+      <select class="tag-select" id="f-day-type"><option value="">—</option>${options(DAY_TYPES, fields.day_type)}</select>
+    </label>
+  </div>
+
+  <div class="tag-row">
+    <div class="tag-group">
+      <span class="tag-label">Gamma regime</span>
+      <div class="pill-row">${GAMMA_REGIMES.map((v) => pill('gamma_regime', v, cap(v))).join('')}</div>
+    </div>
+    <div class="tag-group">
+      <span class="tag-label">Major regime</span>
+      <div class="pill-row">${pill('major_regime', 'yes', 'Yes')}${pill('major_regime', 'no', 'No')}</div>
+    </div>
+  </div>
+
+  ${targetRow()}
+
+  <div class="tag-row">
+    <label class="tag-toggle"><input type="checkbox" id="f-away-stack"${fields.away_stack ? ' checked' : ''}><span class="tswitch"></span>Away-stack</label>
+    ${num('f-stack-ratio', 'Stack ratio', fields.stack_ratio, '0.1', '3.0')}
+    ${num('f-entry-delay', 'Entry delay (s)', fields.entry_delay_sec, '1', 'sec')}
+    ${num('f-planned-stop', 'Planned stop', fields.planned_stop)}
+    ${num('f-actual-exit', 'Actual exit', fields.actual_exit)}
+  </div>
+
+  <div class="tag-row">
+    <label class="tag-toggle"><input type="checkbox" id="f-be-moved"${fields.be_moved ? ' checked' : ''}><span class="tswitch"></span>BE moved</label>
+    ${beReasonGroup()}
+    <label class="tag-toggle"><input type="checkbox" id="f-news-window"${fields.news_window ? ' checked' : ''}><span class="tswitch"></span>News ±15 min</label>
+  </div>
+
+  ${rulesGroup()}`
+
+/**
+ * MM: the tags STDV and MM share, plus MM's own four setups and the entry it
+ * actually got. No setup A/B/C and no band touched — those are STDV's model,
+ * not MM's.
+ */
+const mmPanel = (fields, mmSetup) => `
+  <div class="tag-row">
+    <label class="tag-group">
+      <span class="tag-label">Setup</span>
+      <select class="tag-select" id="f-mm-setup"><option value="">—</option>${options(MM_SETUPS, mmSetup)}</select>
+    </label>
+    <div class="tag-group">
+      <span class="tag-label">Regime</span>
+      <div class="pill-row">${REGIMES.map((v) => pill('regime', v, cap(v))).join('')}</div>
+    </div>
+    <div class="tag-group">
+      <span class="tag-label">Gamma regime</span>
+      <div class="pill-row">${GAMMA_REGIMES.map((v) => pill('gamma_regime', v, cap(v))).join('')}</div>
+    </div>
+  </div>
+
+  ${targetRow()}
+
+  <div class="tag-row">
+    ${num('f-planned-stop', 'Planned stop', fields.planned_stop)}
+    ${num('f-entry-price', 'Entry price', fields.entry_price)}
+    ${num('f-actual-exit', 'Actual exit', fields.actual_exit)}
+    <label class="tag-toggle"><input type="checkbox" id="f-be-moved"${fields.be_moved ? ' checked' : ''}><span class="tswitch"></span>BE moved</label>
+    ${beReasonGroup()}
+  </div>
+
+  ${rulesGroup()}`
+
+/** `x`: no model tags at all. Thesis, hindsight and a screenshot are the trade. */
+const xPanel = () =>
+  `<p class="muted-tag">No model tags — thesis, hindsight notes and a screenshot only.</p>`
+
+const panel = (model, fields, mmSetup) =>
+  model === 'MM' ? mmPanel(fields, mmSetup) : model === 'x' ? xPanel() : stdvPanel(fields)
+
+const modelSwitch = (model) => `
+  <div class="model-switch" role="radiogroup" aria-label="Trading model">
+    ${MODELS.map(
+      (m) =>
+        `<button type="button" class="seg${m === model ? ' on' : ''}" role="radio" aria-checked="${m === model}" data-model="${esc(m)}">${esc(m)}</button>`
+    ).join('')}
+  </div>`
+
+function template(trade, model) {
   return `
   <div class="modal">
     <header class="modal-head">
@@ -68,83 +229,11 @@ function template(trade) {
         <button type="button" class="ghost" data-act="calc-rr">Auto-calc RR from |P&amp;L| ÷ Risk</button>
 
         <div class="tags">
-          <div class="tags-head">Model tags · STDV</div>
-
-          <div class="tag-row">
-            <div class="tag-group">
-              <span class="tag-label">Setup</span>
-              <div class="pill-row">${SETUP_TYPES.map((v) => pill('setup_type', v)).join('')}</div>
-            </div>
-            <div class="tag-group">
-              <span class="tag-label">Band touched</span>
-              <div class="pill-row">${inOrder(BANDS, BAND_ORDER).map((v) => multiPill('band_touched', v)).join('')}</div>
-            </div>
-            <div class="tag-group">
-              <span class="tag-label">Regime</span>
-              <div class="pill-row">${REGIMES.map((v) => pill('regime', v, cap(v))).join('')}</div>
-            </div>
-            <label class="tag-group">
-              <span class="tag-label">Day type</span>
-              <select class="tag-select" id="f-day-type"><option value="">—</option>${options(DAY_TYPES, trade.day_type)}</select>
-            </label>
+          <div class="tags-head">
+            <span>Model tags</span>
+            ${modelSwitch(model)}
           </div>
-
-          <div class="tag-row">
-            <div class="tag-group">
-              <span class="tag-label">Gamma regime</span>
-              <div class="pill-row">${GAMMA_REGIMES.map((v) => pill('gamma_regime', v, cap(v))).join('')}</div>
-            </div>
-            <div class="tag-group">
-              <span class="tag-label">Major regime</span>
-              <div class="pill-row">${pill('major_regime', 'yes', 'Yes')}${pill('major_regime', 'no', 'No')}</div>
-            </div>
-          </div>
-
-          <div class="tag-row">
-            <label class="tag-group">
-              <span class="tag-label">Target</span>
-              <select class="tag-select" id="f-target-add">
-                <option value="">Add…</option>${options(TARGETS)}
-              </select>
-            </label>
-            <label class="tag-group">
-              <span class="tag-label">Custom target</span>
-              <input type="text" id="f-target-custom" class="tag-input" placeholder="custom…">
-            </label>
-            <div class="tag-group">
-              <span class="tag-label">Chosen</span>
-              <div class="pill-row" id="target-chosen"></div>
-            </div>
-          </div>
-
-          <div class="tag-row">
-            <label class="tag-toggle"><input type="checkbox" id="f-away-stack"><span class="tswitch"></span>Away-stack</label>
-            <label class="tag-group"><span class="tag-label">Stack ratio</span><input class="tag-input" type="number" id="f-stack-ratio" step="0.1" placeholder="3.0" value="${trade.stack_ratio ?? ''}"></label>
-            <label class="tag-group"><span class="tag-label">Entry delay (s)</span><input class="tag-input" type="number" id="f-entry-delay" step="1" placeholder="sec" value="${trade.entry_delay_sec ?? ''}"></label>
-            <label class="tag-group"><span class="tag-label">Planned stop</span><input class="tag-input" type="number" id="f-planned-stop" step="0.25" placeholder="price" value="${trade.planned_stop ?? ''}"></label>
-            <label class="tag-group"><span class="tag-label">Actual exit</span><input class="tag-input" type="number" id="f-actual-exit" step="0.25" placeholder="price" value="${trade.actual_exit ?? ''}"></label>
-          </div>
-
-          <div class="tag-row">
-            <label class="tag-toggle"><input type="checkbox" id="f-be-moved"><span class="tswitch"></span>BE moved</label>
-            <div class="tag-group" id="grp-be-reason" hidden>
-              <span class="tag-label">BE reason</span>
-              <div class="pill-row">${inOrder(BE_REASONS, BE_REASON_ORDER).map((v) => pill('be_reason', v, cap(v))).join('')}</div>
-            </div>
-            <label class="tag-toggle"><input type="checkbox" id="f-news-window"><span class="tswitch"></span>News ±15 min</label>
-          </div>
-
-          <div class="tag-group">
-            <span class="tag-label">Rules broken</span>
-            <div class="pill-row">
-              ${pill('rule_broken_any', 'yes', 'Yes')}${pill('rule_broken_any', 'no', 'No')}
-            </div>
-            <div class="pill-row" id="grp-rules-broken" hidden>
-              ${inOrder(RULES_BROKEN.map((r) => r.value), RULE_ORDER)
-                .map((v) => `<button type="button" class="pill pill-red" data-multi="rule_broken" data-val="${esc(v)}">${esc(v)}</button>`)
-                .join('')}
-            </div>
-          </div>
+          <div class="tag-panel" id="tag-panel"></div>
         </div>
 
         <label class="full">Thesis<textarea id="f-thesis" placeholder="Why did you take this trade? What was the setup, flow, confluence...">${esc(trade.thesis ?? '')}</textarea></label>
@@ -178,7 +267,11 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
   const full = trade.id ? (await getTrade(trade.id)) ?? trade : trade
 
   const state = {
+    // Null on every trade logged before the model switch existed — and those
+    // are all STDV, since STDV's tags were the only ones the form offered.
+    model: full.model || DEFAULT_MODEL,
     setup_type: full.setup_type ?? null,
+    mm_setup: full.mm_setup ?? null,
     band_touched: new Set(full.band_touched ?? []),
     // Holds suggestions and hand-typed levels alike — the column is free text.
     target: new Set(full.target ?? []),
@@ -196,19 +289,82 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
     image: full.image ?? null,
   }
 
+  /** Panel inputs, held outside the DOM so a model switch cannot erase them. */
+  const fields = {
+    day_type: full.day_type ?? '',
+    stack_ratio: full.stack_ratio ?? '',
+    entry_delay_sec: full.entry_delay_sec ?? '',
+    planned_stop: full.planned_stop ?? '',
+    entry_price: full.entry_price ?? '',
+    actual_exit: full.actual_exit ?? '',
+    away_stack: !!full.away_stack,
+    be_moved: !!full.be_moved,
+    news_window: !!full.news_window,
+  }
+
   const overlay = document.createElement('div')
   overlay.className = 'overlay'
-  overlay.innerHTML = template(full)
+  overlay.innerHTML = template(full, state.model)
   document.body.append(overlay)
 
   const $ = (sel) => overlay.querySelector(sel)
   const err = $('#form-err')
 
-  // Values the template can't set declaratively.
-  $('#f-away-stack').checked = !!full.away_stack
-  $('#f-be-moved').checked = !!full.be_moved
-  $('#f-news-window').checked = !!full.news_window
-  if (full.target && !TARGETS.includes(full.target)) $('#f-target-custom').value = full.target
+  /** Copies what is on screen into `fields`. Inputs the current model does not
+   *  render are simply absent, so their last value survives untouched. */
+  function harvest() {
+    for (const [key, sel] of Object.entries(TEXT_FIELDS)) {
+      const el = $(sel)
+      if (el) fields[key] = el.value
+    }
+    for (const [key, sel] of Object.entries(CHECK_FIELDS)) {
+      const el = $(sel)
+      if (el) fields[key] = el.checked
+    }
+  }
+
+  /** Re-renders the tag panel for the current model and rebinds what it owns. */
+  function renderPanel() {
+    $('#tag-panel').innerHTML = panel(state.model, fields, state.mm_setup)
+
+    for (const el of overlay.querySelectorAll('.seg[data-model]')) {
+      const on = el.dataset.model === state.model
+      el.classList.toggle('on', on)
+      el.setAttribute('aria-checked', String(on))
+    }
+
+    $('#f-be-moved')?.addEventListener('change', syncPills)
+    $('#f-mm-setup')?.addEventListener('change', (e) => {
+      state.mm_setup = e.target.value || null
+    })
+
+    // Picking from the dropdown adds a target and resets the control, so the
+    // same list can be used again for a second one.
+    $('#f-target-add')?.addEventListener('change', (e) => {
+      if (addTarget(e.target.value)) syncPills()
+      e.target.value = ''
+    })
+
+    // Enter commits a custom target. Without this the form would submit-by-habit
+    // and the typed level would sit in the box unrecorded until save.
+    $('#f-target-custom')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return
+      e.preventDefault()
+      if (addTarget(e.target.value)) {
+        e.target.value = ''
+        syncPills()
+      }
+    })
+
+    syncPills()
+  }
+
+  function setModel(model) {
+    if (model === state.model) return
+    harvest()
+    state.model = model
+    renderPanel()
+  }
 
   function syncPills() {
     for (const el of overlay.querySelectorAll('.pill[data-key]')) {
@@ -219,8 +375,11 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
     for (const el of overlay.querySelectorAll('.pill[data-multi]')) {
       el.classList.toggle('on', state[el.dataset.multi].has(el.dataset.val))
     }
-    $('#grp-be-reason').hidden = !$('#f-be-moved').checked
-    $('#grp-rules-broken').hidden = state.rule_broken_any !== 'yes'
+    // Every group below is model-specific: `x` renders none of them.
+    const beReason = $('#grp-be-reason')
+    if (beReason) beReason.hidden = !$('#f-be-moved')?.checked
+    const rules = $('#grp-rules-broken')
+    if (rules) rules.hidden = state.rule_broken_any !== 'yes'
     renderTargets()
   }
 
@@ -230,8 +389,10 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
    * hand-typed level at once.
    */
   function renderTargets() {
+    const box = $('#target-chosen')
+    if (!box) return
     const chosen = [...state.target]
-    $('#target-chosen').innerHTML = chosen.length
+    box.innerHTML = chosen.length
       ? chosen
           .map((v) => `<button type="button" class="pill on" data-drop-target="${esc(v)}">${esc(v)} ✕</button>`)
           .join('')
@@ -295,10 +456,18 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
         throw new Error('Pick a date and time for this trade')
       }
 
-      const beMoved = $('#f-be-moved').checked
+      harvest()
       // A custom target left typed but never committed with Enter would
       // otherwise be silently dropped on save.
-      addTarget($('#f-target-custom').value)
+      addTarget($('#f-target-custom')?.value)
+
+      // Only the active model's tags are written. Switching a trade to another
+      // model clears what the form no longer shows, rather than leaving the old
+      // model's tags behind on a row that no longer displays them.
+      const stdv = state.model === 'STDV'
+      const mm = state.model === 'MM'
+      const tagged = stdv || mm
+      const beMoved = tagged && fields.be_moved
 
       await upsertTrade({
         id: full.id,
@@ -312,23 +481,26 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
         thesis: $('#f-thesis').value.trim(),
         hindsight: $('#f-hindsight').value.trim(),
         image: state.image,
-        setup_type: state.setup_type,
-        band_touched: [...state.band_touched],
-        away_stack: $('#f-away-stack').checked,
-        stack_ratio: numOrNull($('#f-stack-ratio')),
-        entry_delay_sec: numOrNull($('#f-entry-delay')),
-        planned_stop: numOrNull($('#f-planned-stop')),
-        actual_exit: numOrNull($('#f-actual-exit')),
-        target: [...state.target],
+        model: state.model,
+        setup_type: stdv ? state.setup_type : null,
+        mm_setup: mm ? state.mm_setup : null,
+        band_touched: stdv ? [...state.band_touched] : [],
+        away_stack: stdv && fields.away_stack,
+        stack_ratio: stdv ? numOrNull(fields.stack_ratio) : null,
+        entry_delay_sec: stdv ? numOrNull(fields.entry_delay_sec) : null,
+        planned_stop: tagged ? numOrNull(fields.planned_stop) : null,
+        entry_price: mm ? numOrNull(fields.entry_price) : null,
+        actual_exit: tagged ? numOrNull(fields.actual_exit) : null,
+        target: tagged ? [...state.target] : [],
         be_moved: beMoved,
         // FlowJournal drops the reason when BE wasn't moved; keep that.
         be_reason: beMoved ? state.be_reason : null,
-        regime: state.regime,
-        gamma_regime: state.gamma_regime,
-        major_regime: state.major_regime == null ? null : state.major_regime === 'yes',
-        day_type: $('#f-day-type').value || null,
-        news_window: $('#f-news-window').checked,
-        rule_broken: [...state.rule_broken],
+        regime: tagged ? state.regime : null,
+        gamma_regime: tagged ? state.gamma_regime : null,
+        major_regime: stdv ? (state.major_regime == null ? null : state.major_regime === 'yes') : null,
+        day_type: stdv ? fields.day_type || null : null,
+        news_window: stdv && fields.news_window,
+        rule_broken: tagged ? [...state.rule_broken] : [],
       })
       close()
       onSaved?.()
@@ -340,6 +512,9 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
 
   overlay.addEventListener('click', async (e) => {
     if (e.target === overlay) return close()
+
+    const seg = e.target.closest('.seg[data-model]')
+    if (seg) return setModel(seg.dataset.model)
 
     const p = e.target.closest('.pill')
     if (p) {
@@ -380,30 +555,11 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
     }
   })
 
-  // Picking from the dropdown adds a target and resets the control, so the
-  // same list can be used again for a second one.
-  $('#f-target-add').addEventListener('change', (e) => {
-    if (addTarget(e.target.value)) syncPills()
-    e.target.value = ''
-  })
-
-  // Enter commits a custom target. Without this the form would submit-by-habit
-  // and the typed level would sit in the box unrecorded until save.
-  $('#f-target-custom').addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return
-    e.preventDefault()
-    if (addTarget(e.target.value)) {
-      e.target.value = ''
-      syncPills()
-    }
-  })
-
-  $('#f-be-moved').addEventListener('change', syncPills)
   $('#f-image').addEventListener('change', (e) => useImageFile(e.target.files[0]))
   document.addEventListener('keydown', onKey)
   document.addEventListener('paste', onPaste)
 
-  syncPills()
+  renderPanel()
   renderUpload()
   $('#f-date').focus()
 }

@@ -18,7 +18,7 @@ import { fromRow, toRow, stampNow, uid } from './mapping.js'
  * loaded. Fetching it per-row on keystroke would be a query per character.
  */
 const LIST_COLUMNS =
-  'id, num, date, type, status, pnl, risk, rr, thesis, setup_type, regime, day_type'
+  'id, num, date, type, status, pnl, risk, rr, thesis, model, setup_type, mm_setup, regime, day_type'
 
 /**
  * Reads trades for the signed-in user. RLS on the `trades` table scopes rows,
@@ -46,9 +46,9 @@ export async function listTrades({ limit = 500 } = {}) {
  */
 const ANALYSIS_COLUMNS = `
   id, num, date, type, status, pnl, risk, rr, thesis, hindsight,
-  setup_type, band_touched, away_stack, stack_ratio, entry_delay_sec,
-  planned_stop, actual_exit, target, be_moved, be_reason, regime, day_type,
-  news_window, rule_broken, updated_at
+  model, setup_type, mm_setup, band_touched, away_stack, stack_ratio,
+  entry_delay_sec, planned_stop, entry_price, actual_exit, target, be_moved,
+  be_reason, regime, day_type, news_window, rule_broken, updated_at
 `
 
 /**

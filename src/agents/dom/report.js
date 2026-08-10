@@ -30,7 +30,9 @@ export function toNotes(trades) {
         num: t.num,
         outcome: t.pnl > 0 ? 'WIN' : t.pnl < 0 ? 'LOSS' : 'BE',
         r: r == null ? null : Number(r.toFixed(2)),
-        setup: t.setup_type || null,
+        model: t.model || 'STDV',
+        // One setup column per model; only one of them is ever populated.
+        setup: (t.model === 'MM' ? t.mm_setup : t.setup_type) || null,
         bands: t.band_touched ?? [],
         away_stack: !!t.away_stack,
         be_reason: t.be_reason || null,

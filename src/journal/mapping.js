@@ -15,6 +15,9 @@
  *   entry_delay_sec  integer
  *   planned_stop     numeric
  *   actual_exit      numeric
+ *   entry_price      numeric  MM only
+ *   model            text     'STDV' | 'x' | 'MM'; null on pre-MM rows = STDV
+ *   mm_setup         text     MM only; setup_type stays STDV's A/B/C
  *   rule_broken      text[]   Postgres array, always an array, never null
  *   band_touched     text[]   was text; see the migration note below
  *   target           text[]   was text; free text as well as the suggestions
@@ -117,12 +120,17 @@ export function toRow(t, userId) {
     thesis: t.thesis ?? null,
     hindsight: t.hindsight ?? null,
     image: t.image ?? null,
+    // Null means a row written before the model switch existed; the form reads
+    // that as STDV rather than rewriting history.
+    model: t.model ?? null,
     setup_type: t.setup_type ?? null,
+    mm_setup: t.mm_setup ?? null,
     band_touched: Array.isArray(t.band_touched) ? t.band_touched : [],
     away_stack: t.away_stack ?? null,
     stack_ratio: t.stack_ratio ?? null,
     entry_delay_sec: t.entry_delay_sec ?? null,
     planned_stop: t.planned_stop ?? null,
+    entry_price: t.entry_price ?? null,
     actual_exit: t.actual_exit ?? null,
     target: Array.isArray(t.target) ? t.target : [],
     be_moved: t.be_moved ?? null,
@@ -152,12 +160,15 @@ export function fromRow(r) {
     thesis: r.thesis || '',
     hindsight: r.hindsight || '',
     image: r.image || null,
+    model: r.model || null,
     setup_type: r.setup_type || null,
+    mm_setup: r.mm_setup || null,
     band_touched: Array.isArray(r.band_touched) ? r.band_touched : [],
     away_stack: r.away_stack == null ? false : !!r.away_stack,
     stack_ratio: r.stack_ratio == null ? null : Number(r.stack_ratio),
     entry_delay_sec: r.entry_delay_sec == null ? null : Number(r.entry_delay_sec),
     planned_stop: r.planned_stop == null ? null : Number(r.planned_stop),
+    entry_price: r.entry_price == null ? null : Number(r.entry_price),
     actual_exit: r.actual_exit == null ? null : Number(r.actual_exit),
     target: Array.isArray(r.target) ? r.target : [],
     be_moved: r.be_moved == null ? false : !!r.be_moved,
