@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyFilters, tradeLabel, NO_FILTERS } from './filters.js'
+import { applyFilters, byAccount, tradeLabel, NO_FILTERS, UNASSIGNED } from './filters.js'
 
 const trade = (over = {}) => ({
   num: 1,
@@ -102,4 +102,43 @@ test('an unknown sort falls back to newest rather than throwing', () => {
 test('rows with no date sort last without crashing', () => {
   const rows = [trade({ num: 1, date: null }), trade({ num: 2, date: '2026-07-01T09:30' })]
   assert.deepEqual(applyFilters(rows, { sort: 'newest' }).map((t) => t.num), [2, 1])
+})
+
+const accountRows = () => [
+  trade({ num: 1, account_id: 'a' }),
+  trade({ num: 2, account_id: 'b' }),
+  trade({ num: 3, account_id: null }),
+]
+
+test('byAccount narrows to one account', () => {
+  assert.deepEqual(byAccount(accountRows(), 'a').map((t) => t.num), [1])
+})
+
+test('an empty account is not a filter', () => {
+  assert.equal(byAccount(accountRows(), '').length, 3)
+  assert.equal(byAccount(accountRows(), undefined).length, 3)
+})
+
+test('the unassigned sentinel selects trades with no account', () => {
+  assert.deepEqual(byAccount(accountRows(), UNASSIGNED).map((t) => t.num), [3])
+})
+
+test('an account with nothing on it yields nothing, not everything', () => {
+  assert.deepEqual(byAccount(accountRows(), 'deleted-id'), [])
+})
+
+test('the account filter combines with the others', () => {
+  const rows = [
+    trade({ num: 1, account_id: 'a', status: 'TP' }),
+    trade({ num: 2, account_id: 'a', status: 'SL' }),
+    trade({ num: 3, account_id: 'b', status: 'TP' }),
+  ]
+  assert.deepEqual(
+    applyFilters(rows, { account: 'a', status: 'TP' }).map((t) => t.num),
+    [1]
+  )
+})
+
+test('NO_FILTERS leaves every account visible', () => {
+  assert.equal(applyFilters(accountRows(), NO_FILTERS).length, 3)
 })

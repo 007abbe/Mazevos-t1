@@ -23,6 +23,7 @@
  *   target           text[]   was text; free text as well as the suggestions
  *   gamma_regime     text
  *   major_regime     boolean  null means unanswered, not false
+ *   account_id       uuid     FK to accounts(id); null = unassigned
  *   updated_at       bigint   epoch MILLISECONDS — see assertEpochMs below
  *   everything else  text / boolean
  *
@@ -142,6 +143,10 @@ export function toRow(t, userId) {
     day_type: t.day_type ?? null,
     news_window: t.news_window ?? null,
     rule_broken: Array.isArray(t.rule_broken) ? t.rule_broken : [],
+    // Null is a real value here, not a missing one: it means the trade is not
+    // assigned to any account, which is what every trade logged before accounts
+    // existed is. Empty string would violate the uuid column.
+    account_id: t.account_id || null,
     updated_at: assertEpochMs(t.updatedAt ?? Date.now()),
   }
 }
@@ -179,6 +184,7 @@ export function fromRow(r) {
     day_type: r.day_type || null,
     news_window: r.news_window == null ? false : !!r.news_window,
     rule_broken: Array.isArray(r.rule_broken) ? r.rule_broken : [],
+    account_id: r.account_id || null,
     updatedAt: Number(r.updated_at) || 0,
   }
 }

@@ -1,9 +1,14 @@
 import { listTrades } from './trades.js'
+import { listAccounts, rememberedFilter, rememberFilter } from './accounts.js'
+import { openAccountsModal } from './accounts-ui.js'
 import { computeStats, fmtMoney, fmtNum } from './stats.js'
 import { openTradeForm } from './form.js'
-import { applyFilters, tradeLabel, SORTS, STATUSES, DIRECTIONS, NO_FILTERS } from './filters.js'
+import {
+  applyFilters, byAccount, tradeLabel, SORTS, STATUSES, DIRECTIONS, NO_FILTERS, UNASSIGNED,
+} from './filters.js'
 import { publishSummary } from '../lib/summary.js'
 import { directionBadge, statusBadge } from '../lib/trade-badges.js'
+import { accountName } from '../lib/account-badges.js'
 import { esc, explainFailure } from '../lib/ui-text.js'
 
 const statTile = (label, value, cls = '') =>
@@ -26,7 +31,7 @@ function renderStats(stats) {
 const option = (value, label, selected) =>
   `<option value="${esc(value)}"${value === selected ? ' selected' : ''}>${esc(label)}</option>`
 
-function renderFilters(filters) {
+function renderFilters(filters, accounts) {
   return `
     <div class="filters">
       <input class="search-box" type="search" id="f-search" placeholder="Search ticker, thesis…"
@@ -42,6 +47,12 @@ function renderFilters(filters) {
       <select class="filter-select" id="f-sort" aria-label="Sort trades">
         ${SORTS.map((s) => option(s.value, s.label, filters.sort)).join('')}
       </select>
+      <select class="filter-select" id="f-account" aria-label="Filter by account">
+        ${option('', 'All accounts', filters.account)}
+        ${accounts.map((a) => option(a.id, a.name, filters.account)).join('')}
+        ${option(UNASSIGNED, 'Unassigned', filters.account)}
+      </select>
+      <button type="button" class="ghost btn-accounts" data-act="accounts">Accounts</button>
     </div>
   `
 }
@@ -59,7 +70,7 @@ const fmtRisk = (risk) => {
  */
 const tradeSetup = (t) => (t.model === 'MM' ? t.mm_setup : t.setup_type) ?? ''
 
-function renderRows(trades) {
+function renderRows(trades, accountsById) {
   return trades
     .slice(0, 50)
     .map((t) => {
@@ -70,6 +81,7 @@ function renderRows(trades) {
           <td class="mono">${esc(t.date ?? '')}</td>
           <td>${directionBadge(t.type)}</td>
           <td>${statusBadge(t.status)}</td>
+          <td class="acct-cell">${accountName(accountsById.get(t.account_id))}</td>
           <td>${esc(tradeSetup(t))}</td>
           <td class="num risk-cell">${fmtRisk(t.risk)}</td>
           <td class="num ${pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${fmtMoney(pnl)}</td>
@@ -79,7 +91,7 @@ function renderRows(trades) {
     .join('')
 }
 
-function renderTable(visible, total) {
+function renderTable(visible, total, accountsById) {
   if (!total) return `<p class="muted">No trades yet. Log your first one.</p>`
   if (!visible.length) return `<p class="muted">No trades match these filters.</p>`
 
@@ -87,10 +99,10 @@ function renderTable(visible, total) {
     <div class="table-wrap">
       <table class="trades">
         <thead><tr>
-          <th>Trade</th><th>Date</th><th>Dir</th><th>Status</th><th>Setup</th>
+          <th>Trade</th><th>Date</th><th>Dir</th><th>Status</th><th>Account</th><th>Setup</th>
           <th class="num">Risk</th><th class="num">P&amp;L</th>
         </tr></thead>
-        <tbody>${renderRows(visible)}</tbody>
+        <tbody>${renderRows(visible, accountsById)}</tbody>
       </table>
     </div>
     <p class="muted">Showing ${Math.min(visible.length, 50)} of ${visible.length}${
@@ -103,23 +115,38 @@ function renderTable(visible, total) {
  * Renders the journal into `el`.
  *
  * Filtering is local state: `listTrades` runs once per mount, and every filter
- * change re-renders the table from the array already in memory.
+ * change re-renders the table from the array already in memory. The account
+ * list is fetched alongside it — it names the dropdown's options and colours
+ * the table's Account column, and it is a handful of rows.
  */
 export async function renderJournal(el, { header } = {}) {
   el.innerHTML = `<p class="muted">Loading trades…</p>`
 
   let trades
+  let accounts
   try {
-    trades = await listTrades()
+    ;[trades, accounts] = await Promise.all([listTrades(), listAccounts()])
   } catch (err) {
     el.innerHTML = `<p class="err">${esc(explainFailure(err, { prefix: 'Could not load trades' }))}</p>`
     return
   }
 
-  publishSummary(computeStats(trades))
+  const accountsById = new Map(accounts.map((a) => [a.id, a]))
 
   const reload = () => renderJournal(el, { header })
-  const filters = { ...NO_FILTERS }
+
+  // Saving a trade remounts this whole view, so the selected account has to
+  // outlive the mount — otherwise editing a trade would drop the trader back to
+  // all-accounts totals without them touching the dropdown.
+  const filters = {
+    ...NO_FILTERS,
+    account: rememberedFilter(accounts.map((a) => a.id), [UNASSIGNED]),
+  }
+
+  // The tiles and the sidebar answer to the account alone, not to the search
+  // box or the status filter — see `byAccount` in filters.js. `paint` publishes
+  // it, so there is no separate summary call on mount.
+  const summarise = () => computeStats(byAccount(trades, filters.account))
 
   // The shell owns the topbar; the view owns what goes in it. Clearing first
   // keeps a reload from stacking a second button.
@@ -131,16 +158,25 @@ export async function renderJournal(el, { header } = {}) {
   }
 
   el.innerHTML = `
-    ${renderStats(computeStats(trades))}
-    ${renderFilters(filters)}
+    <div id="trade-stats"></div>
+    ${renderFilters(filters, accounts)}
     <div id="trade-table"></div>
   `
 
   const table = el.querySelector('#trade-table')
+  const statsEl = el.querySelector('#trade-stats')
 
   const paint = () => {
     const visible = applyFilters(trades, filters)
-    table.innerHTML = renderTable(visible, trades.length)
+    const stats = summarise()
+
+    // Tiles, sidebar and table are painted together so they can never disagree
+    // about which account is on screen. `trades.length` stays the total: an
+    // account with nothing on it has no trades *matching the filters*, which is
+    // not the same as having logged none at all.
+    statsEl.innerHTML = renderStats(stats)
+    publishSummary(stats)
+    table.innerHTML = renderTable(visible, trades.length, accountsById)
 
     const openRow = (row) =>
       openTradeForm({ trade: trades.find((t) => t.id === row.dataset.id), onSaved: reload })
@@ -166,6 +202,19 @@ export async function renderJournal(el, { header } = {}) {
   bind('#f-status', 'status', 'change')
   bind('#f-direction', 'direction', 'change')
   bind('#f-sort', 'sort', 'change')
+
+  el.querySelector('#f-account').addEventListener('change', (e) => {
+    filters.account = e.target.value
+    rememberFilter(filters.account)
+    paint()
+  })
+
+  // Creating, deleting or assigning changes the dropdown's options and the
+  // table's Account column, so the modal reloads the view rather than trying to
+  // patch it. It only calls back when something was actually written.
+  el.querySelector('[data-act="accounts"]').addEventListener('click', () => {
+    openAccountsModal({ onChanged: reload })
+  })
 
   paint()
 }

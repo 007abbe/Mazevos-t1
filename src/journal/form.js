@@ -3,6 +3,7 @@ import {
   REGIMES, GAMMA_REGIMES, BE_REASONS, DAY_TYPES, RULES_BROKEN,
 } from '../domain/trade-vocab.js'
 import { upsertTrade, deleteTrade, getTrade, nextTradeNum } from './trades.js'
+import { listAccounts, lastUsedAccount, rememberLastUsedAccount } from './accounts.js'
 import { toDatetimeLocal, isValidTradeDate } from './mapping.js'
 import { compressImage, dataUrlBytes, isImageFile } from './screenshots.js'
 
@@ -210,7 +211,29 @@ const modelSwitch = (model) => `
     ).join('')}
   </div>`
 
-function template(trade, model) {
+/**
+ * The account this trade was taken on. Optional — every trade logged before
+ * accounts existed has none, and "—" has to stay a legal answer or editing an
+ * old trade would force one on it.
+ *
+ * `selected` is the trade's own account when editing, and the last account used
+ * when logging a new one: the trader is almost always on the same account they
+ * were on an hour ago, and a wrong default is one dropdown away from right.
+ */
+const accountField = (accounts, selected) => `
+  <label>Account
+    <select id="f-account">
+      <option value=""${selected ? '' : ' selected'}>${accounts.length ? '—' : 'No accounts yet'}</option>
+      ${accounts
+        .map(
+          (a) =>
+            `<option value="${esc(a.id)}"${a.id === selected ? ' selected' : ''}>${esc(a.name)}</option>`
+        )
+        .join('')}
+    </select>
+  </label>`
+
+function template(trade, model, accounts, account) {
   return `
   <div class="modal">
     <header class="modal-head">
@@ -227,6 +250,7 @@ function template(trade, model) {
         <label>Risk ($)<input type="number" id="f-risk" step="0.01" placeholder="Amount risked" value="${trade.risk ?? ''}"></label>
         <label>RR (Risk/Reward)<input type="number" id="f-rr" step="0.1" placeholder="e.g. 2.5" value="${trade.rr ?? ''}"></label>
         <button type="button" class="ghost" data-act="calc-rr">Auto-calc RR from |P&amp;L| ÷ Risk</button>
+        ${accountField(accounts, account)}
 
         <div class="tags">
           <div class="tags-head">
@@ -264,7 +288,15 @@ function template(trade, model) {
  */
 export async function openTradeForm({ trade = {}, onSaved } = {}) {
   // Editing needs the heavy fields the list query leaves out.
-  const full = trade.id ? (await getTrade(trade.id)) ?? trade : trade
+  const [full, accounts] = await Promise.all([
+    trade.id ? getTrade(trade.id).then((t) => t ?? trade) : Promise.resolve(trade),
+    // A failed account fetch must not block logging a trade: the field falls
+    // back to an empty list, which renders as "No accounts yet".
+    listAccounts().catch(() => []),
+  ])
+
+  const accountIds = accounts.map((a) => a.id)
+  const account = full.id ? (full.account_id ?? '') : lastUsedAccount(accountIds)
 
   const state = {
     // Null on every trade logged before the model switch existed — and those
@@ -304,7 +336,7 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
 
   const overlay = document.createElement('div')
   overlay.className = 'overlay'
-  overlay.innerHTML = template(full, state.model)
+  overlay.innerHTML = template(full, state.model, accounts, account)
   document.body.append(overlay)
 
   const $ = (sel) => overlay.querySelector(sel)
@@ -501,7 +533,11 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
         day_type: stdv ? fields.day_type || null : null,
         news_window: stdv && fields.news_window,
         rule_broken: tagged ? [...state.rule_broken] : [],
+        account_id: $('#f-account').value || null,
       })
+      // Only remembered once the save succeeded, and only when an account was
+      // actually picked — clearing the field is not a new default.
+      if ($('#f-account').value) rememberLastUsedAccount($('#f-account').value)
       close()
       onSaved?.()
     } catch (e) {

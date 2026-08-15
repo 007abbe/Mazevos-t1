@@ -42,6 +42,7 @@ const dbRow = {
   day_type: 'Normal Variation',
   news_window: false,
   rule_broken: ['early_entry', 'traded_news'],
+  account_id: '00000000-0000-0000-0000-0000000000ac',
   updated_at: 1753363800000,
 }
 
@@ -67,9 +68,16 @@ test('round-trip covers the full column set — no field silently dropped', () =
     'mm_setup', 'band_touched', 'away_stack', 'stack_ratio', 'entry_delay_sec',
     'planned_stop', 'entry_price', 'actual_exit', 'target', 'be_moved',
     'be_reason', 'regime', 'gamma_regime', 'major_regime', 'day_type',
-    'news_window', 'rule_broken',
+    'news_window', 'rule_broken', 'account_id',
   ]
   assert.deepEqual(Object.keys(toRow(fromRow(dbRow), USER)).sort(), [...COLUMNS].sort())
+})
+
+test('a missing account_id means unassigned, never an empty string', () => {
+  // The column is a uuid: '' would be rejected by Postgres, null is the value
+  // every trade logged before accounts existed carries.
+  assert.equal(toRow(fromRow({ id: 'x', updated_at: 1 }), USER).account_id, null)
+  assert.equal(toRow({ id: 'x', updatedAt: 1, account_id: '' }, USER).account_id, null)
 })
 
 test('an empty row survives the round-trip with FlowJournal defaults', () => {

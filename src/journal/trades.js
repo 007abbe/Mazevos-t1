@@ -18,7 +18,7 @@ import { fromRow, toRow, stampNow, uid } from './mapping.js'
  * loaded. Fetching it per-row on keystroke would be a query per character.
  */
 const LIST_COLUMNS =
-  'id, num, date, type, status, pnl, risk, rr, thesis, model, setup_type, mm_setup, regime, day_type'
+  'id, num, date, type, status, pnl, risk, rr, thesis, model, setup_type, mm_setup, regime, day_type, account_id'
 
 /**
  * Reads trades for the signed-in user. RLS on the `trades` table scopes rows,

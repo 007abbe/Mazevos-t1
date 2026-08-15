@@ -21,8 +21,29 @@ export const SORTS = [
 export const STATUSES = ['TP', 'SL', 'BE', 'TP1+BE', 'Open']
 export const DIRECTIONS = ['Long', 'Short']
 
+/**
+ * The account dropdown's value for "trades with no account", as distinct from
+ * '' which means "every account". A sentinel rather than null because the value
+ * round-trips through a `<select>`, where everything is a string — and every
+ * trade logged before accounts existed is unassigned, so this is a real view of
+ * the data, not an edge case.
+ */
+export const UNASSIGNED = 'none'
+
 /** Empty filter state — every field falsy means "no narrowing". */
-export const NO_FILTERS = { search: '', status: '', direction: '', sort: 'newest' }
+export const NO_FILTERS = { search: '', status: '', direction: '', account: '', sort: 'newest' }
+
+/**
+ * Narrows to one account. Separate from `applyFilters` because the header tiles
+ * and the sidebar totals apply *only* this one: picking an account changes what
+ * "Net P&L" means, while typing in the search box must not — otherwise the tiles
+ * would re-read as stats-for-my-search, which is not a number anyone wants.
+ */
+export function byAccount(trades, account) {
+  if (!account) return trades
+  if (account === UNASSIGNED) return trades.filter((t) => !t.account_id)
+  return trades.filter((t) => t.account_id === account)
+}
 
 /**
  * The label the table shows for a trade. There is no ticker column on the
@@ -62,10 +83,10 @@ function matchesSearch(trade, needle) {
  * @returns {object[]} a new array; the input is not mutated
  */
 export function applyFilters(trades, filters = {}) {
-  const { search, status, direction, sort } = { ...NO_FILTERS, ...filters }
+  const { search, status, direction, account, sort } = { ...NO_FILTERS, ...filters }
   const needle = search.trim().toLowerCase()
 
-  const filtered = trades.filter((t) => {
+  const filtered = byAccount(trades, account).filter((t) => {
     if (status && t.status !== status) return false
     if (direction && t.type !== direction) return false
     if (needle && !matchesSearch(t, needle)) return false
