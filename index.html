@@ -2,7 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Pixel art, so it ships as a PNG rather than an SVG and is upscaled with
+         nearest-neighbour: the badge outline is one pixel wide and any smoothing
+         turns it to mush at the 16px a tab actually renders. -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mazevo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
