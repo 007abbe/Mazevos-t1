@@ -6,13 +6,36 @@
  * concept of them. They are still stored strings, so changing a value here
  * means migrating existing `accounts.type` rows.
  *
- * Order is display order: the account you are most committed to first.
+ * Order is display order: the account you are most committed to first, and
+ * Backtest last because no money was ever at stake on it.
  */
-export const ACCOUNT_TYPES = ['Live', 'Funded', 'Evaluation', 'Demo']
+export const ACCOUNT_TYPES = ['Live', 'Funded', 'Evaluation', 'Demo', 'Backtest']
 
 export const DEFAULT_ACCOUNT_TYPE = 'Evaluation'
 
 export const isAccountType = (value) => ACCOUNT_TYPES.includes(value)
+
+/**
+ * A backtest account is an ordinary account with this type — no column, no
+ * second table. That is deliberate: `accounts.type` is already free text
+ * specifically so a new kind of account costs no migration, and a boolean flag
+ * beside the type would let a row claim to be both a Live account and a
+ * backtest one.
+ *
+ * What the type buys is a hard partition. Trades on a backtest account are the
+ * Backtest journal's; every other trade, assigned or not, is the live
+ * journal's. Neither one's numbers can leak into the other's tiles.
+ */
+export const BACKTEST_ACCOUNT_TYPE = 'Backtest'
+
+export const isBacktestAccount = (account) => account?.type === BACKTEST_ACCOUNT_TYPE
+
+/**
+ * The set of account ids that belong to the Backtest journal. A Set because
+ * every trade row is tested against it once per render.
+ */
+export const backtestAccountIds = (accounts = []) =>
+  new Set(accounts.filter(isBacktestAccount).map((a) => a.id))
 
 /**
  * Names are what the trader types, so they need a bound: the value is rendered

@@ -19,6 +19,9 @@ const TYPE_CLASSES = {
   Funded: 'acct-funded',
   Evaluation: 'acct-eval',
   Demo: 'acct-demo',
+  // Amber, and shared with the veto badge: both mark a row where no money
+  // changed hands, which is the one thing you must never misread at a glance.
+  Backtest: 'acct-backtest',
 }
 
 /** An unrecognised type takes the neutral grey rather than losing its colour. */

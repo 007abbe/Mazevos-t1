@@ -15,7 +15,7 @@
  *   entry_delay_sec  integer
  *   planned_stop     numeric
  *   actual_exit      numeric
- *   entry_price      numeric  MM only
+ *   entry_price      numeric  STDV and MM; null on `x` and on older STDV rows
  *   model            text     'STDV' | 'x' | 'MM'; null on pre-MM rows = STDV
  *   mm_setup         text     MM only; setup_type stays STDV's A/B/C
  *   rule_broken      text[]   Postgres array, always an array, never null
@@ -24,6 +24,13 @@
  *   gamma_regime     text
  *   major_regime     boolean  null means unanswered, not false
  *   account_id       uuid     FK to accounts(id); null = unassigned
+ *   kind             text     'trade' | 'veto'; null on pre-veto rows = trade
+ *   veto_outcome     text     veto rows only
+ *   conviction       smallint 1-10; null means unanswered
+ *   mech_trigger     text     'yes' | 'no' | 'partial'
+ *   discretionary_act text[]  Postgres array, like rule_broken
+ *   mech_counterfactual_r    numeric
+ *   mech_entry/stop/target/exit  numeric  prices, not R
  *   updated_at       bigint   epoch MILLISECONDS — see assertEpochMs below
  *   everything else  text / boolean
  *
@@ -147,6 +154,21 @@ export function toRow(t, userId) {
     // assigned to any account, which is what every trade logged before accounts
     // existed is. Empty string would violate the uuid column.
     account_id: t.account_id || null,
+    // Null is written as null rather than as 'trade': every row logged before
+    // vetoes existed has null here, and stamping 'trade' on new rows only would
+    // make the column look half-migrated. Readers resolve null themselves.
+    kind: t.kind ?? null,
+    // Only meaningful on a veto — the form nulls it on a real trade, the same
+    // way FlowJournal nulls be_reason when BE wasn't moved.
+    veto_outcome: t.veto_outcome ?? null,
+    conviction: t.conviction ?? null,
+    mech_trigger: t.mech_trigger ?? null,
+    discretionary_act: Array.isArray(t.discretionary_act) ? t.discretionary_act : [],
+    mech_counterfactual_r: t.mech_counterfactual_r ?? null,
+    mech_entry: t.mech_entry ?? null,
+    mech_stop: t.mech_stop ?? null,
+    mech_target: t.mech_target ?? null,
+    mech_exit: t.mech_exit ?? null,
     updated_at: assertEpochMs(t.updatedAt ?? Date.now()),
   }
 }
@@ -185,6 +207,19 @@ export function fromRow(r) {
     news_window: r.news_window == null ? false : !!r.news_window,
     rule_broken: Array.isArray(r.rule_broken) ? r.rule_broken : [],
     account_id: r.account_id || null,
+    kind: r.kind || null,
+    veto_outcome: r.veto_outcome || null,
+    conviction: r.conviction == null ? null : Number(r.conviction),
+    mech_trigger: r.mech_trigger || null,
+    discretionary_act: Array.isArray(r.discretionary_act) ? r.discretionary_act : [],
+    // Numerics come back from Postgres as strings, and the discretion delta does
+    // arithmetic on this one — an unmapped '1.8' would concatenate, not add.
+    mech_counterfactual_r:
+      r.mech_counterfactual_r == null ? null : Number(r.mech_counterfactual_r),
+    mech_entry: r.mech_entry == null ? null : Number(r.mech_entry),
+    mech_stop: r.mech_stop == null ? null : Number(r.mech_stop),
+    mech_target: r.mech_target == null ? null : Number(r.mech_target),
+    mech_exit: r.mech_exit == null ? null : Number(r.mech_exit),
     updatedAt: Number(r.updated_at) || 0,
   }
 }

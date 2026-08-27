@@ -10,6 +10,8 @@
  * Pure, so the combining rules are testable without a DOM.
  */
 
+import { tradeKind } from '../domain/veto-vocab.js'
+
 /** Options for the sort dropdown, in display order. */
 export const SORTS = [
   { value: 'newest', label: 'Newest first' },
@@ -30,8 +32,41 @@ export const DIRECTIONS = ['Long', 'Short']
  */
 export const UNASSIGNED = 'none'
 
+/**
+ * Which journal a trade belongs to. Not a filter the user picks from a
+ * dropdown — it is which page they are on, and it is applied before everything
+ * else so the two journals can never show each other's rows.
+ */
+export const SCOPES = { LIVE: 'live', BACKTEST: 'backtest' }
+
 /** Empty filter state — every field falsy means "no narrowing". */
-export const NO_FILTERS = { search: '', status: '', direction: '', account: '', sort: 'newest' }
+export const NO_FILTERS = {
+  search: '',
+  status: '',
+  direction: '',
+  account: '',
+  // '' is both kinds. Not defaulted to 'trade': a veto you cannot see is a veto
+  // you stop logging.
+  kind: '',
+  sort: 'newest',
+}
+
+/**
+ * Splits the loaded trades into the journal being viewed.
+ *
+ * The partition is total and has no overlap: a trade on a Backtest account is
+ * the Backtest journal's, everything else — including every unassigned trade,
+ * which is what all 57 pre-accounts rows are — is the live journal's. That
+ * asymmetry is on purpose. An unassigned trade was taken on *something real*
+ * that simply was not recorded; defaulting it into the backtest would quietly
+ * erase P&L from the live tiles.
+ *
+ * @param {Set<string>} backtestIds from `backtestAccountIds(accounts)`
+ */
+export function byScope(trades, scope, backtestIds) {
+  const isBacktest = (t) => !!t.account_id && backtestIds.has(t.account_id)
+  return scope === SCOPES.BACKTEST ? trades.filter(isBacktest) : trades.filter((t) => !isBacktest(t))
+}
 
 /**
  * Narrows to one account. Separate from `applyFilters` because the header tiles
@@ -83,10 +118,14 @@ function matchesSearch(trade, needle) {
  * @returns {object[]} a new array; the input is not mutated
  */
 export function applyFilters(trades, filters = {}) {
-  const { search, status, direction, account, sort } = { ...NO_FILTERS, ...filters }
+  const { search, status, direction, account, kind, sort } = { ...NO_FILTERS, ...filters }
   const needle = search.trim().toLowerCase()
 
   const filtered = byAccount(trades, account).filter((t) => {
+    // Before status, because a veto has none — it was never filled, so TP/SL is
+    // not a question it can answer. Checking status first would let "All
+    // statuses" quietly behave differently from every named status.
+    if (kind && tradeKind(t) !== kind) return false
     if (status && t.status !== status) return false
     if (direction && t.type !== direction) return false
     if (needle && !matchesSearch(t, needle)) return false

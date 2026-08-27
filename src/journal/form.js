@@ -2,6 +2,12 @@ import {
   TYPES, STATUSES, MODELS, DEFAULT_MODEL, SETUP_TYPES, MM_SETUPS, BANDS, TARGETS,
   REGIMES, GAMMA_REGIMES, BE_REASONS, DAY_TYPES, RULES_BROKEN,
 } from '../domain/trade-vocab.js'
+import {
+  KINDS, DEFAULT_KIND, VETO_OUTCOMES, VETO_OUTCOME_LABELS, MECH_TRIGGERS,
+  DISCRETIONARY_ACTS, CONVICTION_MIN, CONVICTION_MAX, normaliseConviction, tradeKind,
+} from '../domain/veto-vocab.js'
+import { backtestAccountIds } from '../domain/account-vocab.js'
+import { SCOPES } from './filters.js'
 import { upsertTrade, deleteTrade, getTrade, nextTradeNum } from './trades.js'
 import { listAccounts, lastUsedAccount, rememberLastUsedAccount } from './accounts.js'
 import { toDatetimeLocal, isValidTradeDate } from './mapping.js'
@@ -152,6 +158,10 @@ const stdvPanel = (fields) => `
     ${num('f-stack-ratio', 'Stack ratio', fields.stack_ratio, '0.1', '3.0')}
     ${num('f-entry-delay', 'Entry delay (s)', fields.entry_delay_sec, '1', 'sec')}
     ${num('f-planned-stop', 'Planned stop', fields.planned_stop)}
+    <!-- Entry price was MM-only until the points statistics needed it: a stop
+         distance is |entry - stop|, so without an entry an STDV trade cannot
+         report one. Optional, like every other price here. -->
+    ${num('f-entry-price', 'Entry price', fields.entry_price)}
     ${num('f-actual-exit', 'Actual exit', fields.actual_exit)}
   </div>
 
@@ -211,6 +221,85 @@ const modelSwitch = (model) => `
     ).join('')}
   </div>`
 
+const KIND_LABELS = { trade: 'Trade', veto: 'Veto' }
+
+/**
+ * The first thing the form asks, because it changes what the rest of the form
+ * even means: a trade you took has a P&L, a trade you passed on has an opinion.
+ *
+ * Rendered as a switch rather than a checkbox — "Veto" unticked would read as a
+ * modifier on a trade, and it is not one. It is the other kind of row.
+ */
+const kindSwitch = (kind) => `
+  <div class="full field kind-field">
+    <div class="kind-switch" role="radiogroup" aria-label="Entry kind">
+      ${KINDS.map(
+        (k) =>
+          `<button type="button" class="seg seg-${esc(k)}${k === kind ? ' on' : ''}" role="radio"
+                   aria-checked="${k === kind}" data-kind="${esc(k)}">${esc(KIND_LABELS[k])}</button>`
+      ).join('')}
+    </div>
+    <p class="kind-hint" id="kind-hint"></p>
+  </div>`
+
+const KIND_HINTS = {
+  trade: 'A position you actually took. Counts toward P&L, win rate and trade count.',
+  veto: 'An idea you passed on. No P&L, no win rate, no trade count — just the reasoning and what it would have done.',
+}
+
+/** Veto only: what the idea would have done. Replaces Status, which needs a fill. */
+const outcomeField = () => `
+  <div class="full field" id="w-outcome" hidden>
+    <span class="form-label">Outcome — would have been</span>
+    <div class="pill-row">
+      ${VETO_OUTCOMES.map((v) => pill('veto_outcome', v, VETO_OUTCOME_LABELS[v])).join('')}
+    </div>
+  </div>`
+
+/**
+ * The discretion audit. Asked on every entry, whatever the model and whichever
+ * journal — the question "would a strict mechanical SPM/MM have fired here" is
+ * not a property of STDV or MM, it is a property of the decision.
+ *
+ * Sits outside `#tag-panel` on purpose: the panel is destroyed and rebuilt on
+ * every model switch, and these answers must survive that. Nothing here is
+ * harvested into `fields` for the same reason — the elements are never replaced,
+ * so `save` reads them straight off the DOM.
+ */
+const discretionBlock = (t) => `
+  <div class="tags disc full">
+    <div class="tags-head">
+      <span>Discretion audit</span>
+    </div>
+
+    <div class="tag-row">
+      <label class="tag-group">
+        <span class="tag-label">Conviction (${CONVICTION_MIN}–${CONVICTION_MAX})</span>
+        <input class="tag-input" type="number" id="f-conviction" min="${CONVICTION_MIN}"
+               max="${CONVICTION_MAX}" step="1" placeholder="1–10" value="${esc(t.conviction ?? '')}">
+      </label>
+      <div class="tag-group">
+        <span class="tag-label">Mech trigger</span>
+        <div class="pill-row">${MECH_TRIGGERS.map((v) => pill('mech_trigger', v, cap(v))).join('')}</div>
+      </div>
+      ${num('f-mech-cf-r', 'Mech counterfactual R', t.mech_counterfactual_r ?? '', '0.1', 'e.g. 1.8')}
+    </div>
+
+    <div class="tag-group">
+      <span class="tag-label">Discretionary act</span>
+      <div class="pill-row">
+        ${DISCRETIONARY_ACTS.map((a) => multiPill('discretionary_act', a.value, a.label)).join('')}
+      </div>
+    </div>
+
+    <div class="tag-row">
+      ${num('f-mech-entry', 'Mech entry', t.mech_entry ?? '')}
+      ${num('f-mech-stop', 'Mech stop', t.mech_stop ?? '')}
+      ${num('f-mech-target', 'Mech target', t.mech_target ?? '')}
+      ${num('f-mech-exit', 'Mech exit', t.mech_exit ?? '')}
+    </div>
+  </div>`
+
 /**
  * The account this trade was taken on. Optional — every trade logged before
  * accounts existed has none, and "—" has to stay a legal answer or editing an
@@ -220,10 +309,24 @@ const modelSwitch = (model) => `
  * when logging a new one: the trader is almost always on the same account they
  * were on an hour ago, and a wrong default is one dropdown away from right.
  */
-const accountField = (accounts, selected) => `
-  <label>Account
+const accountField = (accounts, selected, scope) => {
+  // In the Backtest journal "no account" is not an available answer. An
+  // unassigned trade belongs to the live journal by definition (see byScope in
+  // filters.js), so saving one here would file a simulated fill among real
+  // ones — the exact leak the two journals exist to prevent.
+  const backtest = scope === SCOPES.BACKTEST
+  const blank = accounts.length
+    ? backtest
+      ? 'Pick a backtest account'
+      : '—'
+    : backtest
+      ? 'No backtest accounts yet'
+      : 'No accounts yet'
+
+  return `
+  <label>Account${backtest ? ' <span class="req">required</span>' : ''}
     <select id="f-account">
-      <option value=""${selected ? '' : ' selected'}>${accounts.length ? '—' : 'No accounts yet'}</option>
+      <option value=""${selected ? '' : ' selected'}>${blank}</option>
       ${accounts
         .map(
           (a) =>
@@ -232,25 +335,31 @@ const accountField = (accounts, selected) => `
         .join('')}
     </select>
   </label>`
+}
 
-function template(trade, model, accounts, account) {
+function template(trade, model, accounts, account, scope) {
+  const backtest = scope === SCOPES.BACKTEST
+  const noun = backtest ? 'backtest entry' : 'trade'
+
   return `
   <div class="modal">
     <header class="modal-head">
-      <h2>${trade.id ? 'Edit trade' : 'Log trade'}</h2>
+      <h2>${trade.id ? 'Edit' : 'Log'} ${esc(noun)}${backtest ? ' <span class="badge acct-backtest">Backtest</span>' : ''}</h2>
       <button type="button" class="ghost icon" data-act="close" aria-label="Close">${CLOSE_ICON}</button>
     </header>
 
     <div class="modal-body">
       <div class="grid">
+        ${kindSwitch(tradeKind(trade))}
         <label>Direction<select id="f-type">${options(TYPES, trade.type)}</select></label>
         <label>Date &amp; Time<input type="datetime-local" id="f-date" value="${esc(trade.date || toDatetimeLocal())}"></label>
-        <label>Status<select id="f-status">${options(STATUSES, trade.status)}</select></label>
-        <label>P&amp;L ($)<input type="number" id="f-pnl" step="0.01" placeholder="e.g. 250 or -120" value="${trade.pnl ?? ''}"></label>
-        <label>Risk ($)<input type="number" id="f-risk" step="0.01" placeholder="Amount risked" value="${trade.risk ?? ''}"></label>
-        <label>RR (Risk/Reward)<input type="number" id="f-rr" step="0.1" placeholder="e.g. 2.5" value="${trade.rr ?? ''}"></label>
-        <button type="button" class="ghost" data-act="calc-rr">Auto-calc RR from |P&amp;L| ÷ Risk</button>
-        ${accountField(accounts, account)}
+        <label id="w-status">Status<select id="f-status">${options(STATUSES, trade.status)}</select></label>
+        <label id="w-pnl">P&amp;L ($)<input type="number" id="f-pnl" step="0.01" placeholder="e.g. 250 or -120" value="${trade.pnl ?? ''}"></label>
+        <label id="w-risk">Risk ($)<input type="number" id="f-risk" step="0.01" placeholder="Amount risked" value="${trade.risk ?? ''}"></label>
+        <label id="w-rr">RR (Risk/Reward)<input type="number" id="f-rr" step="0.1" placeholder="e.g. 2.5" value="${trade.rr ?? ''}"></label>
+        <button type="button" class="ghost" id="w-calc" data-act="calc-rr">Auto-calc RR from |P&amp;L| ÷ Risk</button>
+        ${outcomeField()}
+        ${accountField(accounts, account, scope)}
 
         <div class="tags">
           <div class="tags-head">
@@ -259,6 +368,8 @@ function template(trade, model, accounts, account) {
           </div>
           <div class="tag-panel" id="tag-panel"></div>
         </div>
+
+        ${discretionBlock(trade)}
 
         <label class="full">Thesis<textarea id="f-thesis" placeholder="Why did you take this trade? What was the setup, flow, confluence...">${esc(trade.thesis ?? '')}</textarea></label>
         <label class="full">Hindsight notes<textarea id="f-hindsight" placeholder="Post-trade reflection. What worked, what didn't, what you missed...">${esc(trade.hindsight ?? '')}</textarea></label>
@@ -277,7 +388,7 @@ function template(trade, model, accounts, account) {
       ${trade.id ? '<button type="button" class="ghost danger" data-act="delete">Delete</button>' : ''}
       <span class="spacer"></span>
       <button type="button" class="ghost" data-act="close">Cancel</button>
-      <button type="button" data-act="save">Save trade</button>
+      <button type="button" data-act="save" id="f-save">Save</button>
     </footer>
   </div>`
 }
@@ -286,19 +397,31 @@ function template(trade, model, accounts, account) {
  * Opens the add/edit modal. `trade` is a partial app-shaped trade; omit it to
  * create. Calls `onSaved()` after a successful save or delete.
  */
-export async function openTradeForm({ trade = {}, onSaved } = {}) {
+export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE } = {}) {
   // Editing needs the heavy fields the list query leaves out.
-  const [full, accounts] = await Promise.all([
+  const [full, allAccounts] = await Promise.all([
     trade.id ? getTrade(trade.id).then((t) => t ?? trade) : Promise.resolve(trade),
     // A failed account fetch must not block logging a trade: the field falls
     // back to an empty list, which renders as "No accounts yet".
     listAccounts().catch(() => []),
   ])
 
+  // Only the accounts of the journal you are standing in. The dropdown is the
+  // one place the two could be mixed, so it is the one place that has to filter
+  // — and both directions matter: a live trade must not be filed to a backtest
+  // account any more than the reverse.
+  const backtestIds = backtestAccountIds(allAccounts)
+  const wantBacktest = scope === SCOPES.BACKTEST
+  const accounts = allAccounts.filter((a) => backtestIds.has(a.id) === wantBacktest)
+
   const accountIds = accounts.map((a) => a.id)
-  const account = full.id ? (full.account_id ?? '') : lastUsedAccount(accountIds)
+  const account = full.id ? (full.account_id ?? '') : lastUsedAccount(accountIds, scope)
 
   const state = {
+    kind: tradeKind(full),
+    veto_outcome: full.veto_outcome ?? null,
+    mech_trigger: full.mech_trigger ?? null,
+    discretionary_act: new Set(full.discretionary_act ?? []),
     // Null on every trade logged before the model switch existed — and those
     // are all STDV, since STDV's tags were the only ones the form offered.
     model: full.model || DEFAULT_MODEL,
@@ -336,7 +459,7 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
 
   const overlay = document.createElement('div')
   overlay.className = 'overlay'
-  overlay.innerHTML = template(full, state.model, accounts, account)
+  overlay.innerHTML = template(full, state.model, accounts, account, scope)
   document.body.append(overlay)
 
   const $ = (sel) => overlay.querySelector(sel)
@@ -396,6 +519,56 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
     harvest()
     state.model = model
     renderPanel()
+  }
+
+  /**
+   * Shows the fields the current kind can honestly answer, and hides the rest.
+   *
+   * Toggles `hidden` rather than re-rendering: switching Trade → Veto → Trade
+   * must not empty a P&L the trader already typed, and the discretion block
+   * below is shared by both kinds, so rebuilding the body would cost those
+   * answers too.
+   */
+  function applyKind() {
+    const veto = state.kind === 'veto'
+
+    // P&L, Risk, RR and Status all describe a fill. A veto has none.
+    for (const sel of ['#w-pnl', '#w-risk', '#w-rr', '#w-calc', '#w-status']) {
+      $(sel).hidden = veto
+    }
+    $('#w-outcome').hidden = !veto
+
+    $('#kind-hint').textContent = KIND_HINTS[state.kind]
+    $('#f-save').textContent = veto ? 'Save veto' : 'Save trade'
+
+    for (const el of overlay.querySelectorAll('.seg[data-kind]')) {
+      const on = el.dataset.kind === state.kind
+      el.classList.toggle('on', on)
+      el.setAttribute('aria-checked', String(on))
+    }
+
+    overlay.querySelector('.modal').classList.toggle('is-veto', veto)
+  }
+
+  function setKind(kind) {
+    if (kind === state.kind) return
+    state.kind = kind
+    applyKind()
+    syncPills()
+  }
+
+  /**
+   * Keeps "none" exclusive. Answering "none" and "size adjusted" at once is not
+   * a state the reader can make sense of, so the newest click wins: picking any
+   * act drops "none", and picking "none" drops everything else.
+   */
+  function toggleDiscretionaryAct(value) {
+    const set = state.discretionary_act
+    if (set.has(value)) return void set.delete(value)
+
+    if (value === 'none') set.clear()
+    else set.delete('none')
+    set.add(value)
   }
 
   function syncPills() {
@@ -488,10 +661,28 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
         throw new Error('Pick a date and time for this trade')
       }
 
+      const accountId = $('#f-account').value || null
+
+      // See accountField: an unassigned row lands in the live journal, so in the
+      // Backtest journal saving without an account would file a simulated fill
+      // among real ones. Refused rather than silently redirected.
+      if (scope === SCOPES.BACKTEST && !accountId) {
+        throw new Error(
+          accounts.length
+            ? 'Pick a backtest account — a backtest entry with no account would show up in the live journal'
+            : 'Create a backtest account first: Accounts → New account → Backtest'
+        )
+      }
+
       harvest()
       // A custom target left typed but never committed with Enter would
       // otherwise be silently dropped on save.
       addTarget($('#f-target-custom')?.value)
+
+      // A veto has no fill, so it has no P&L, risk, RR or status — and those are
+      // zeroed here rather than merely hidden, so that flipping a mistyped trade
+      // to a veto cannot leave a stale $250 on the row for the tiles to find.
+      const veto = state.kind === 'veto'
 
       // Only the active model's tags are written. Switching a trade to another
       // model clears what the form no longer shows, rather than leaving the old
@@ -506,10 +697,12 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
         num: full.num ?? (await nextTradeNum()),
         date,
         type: $('#f-type').value,
-        status: $('#f-status').value,
-        pnl: parseFloat($('#f-pnl').value) || 0,
-        risk: parseFloat($('#f-risk').value) || 0,
-        rr: parseFloat($('#f-rr').value) || 0,
+        kind: state.kind,
+        status: veto ? null : $('#f-status').value,
+        veto_outcome: veto ? state.veto_outcome : null,
+        pnl: veto ? 0 : parseFloat($('#f-pnl').value) || 0,
+        risk: veto ? 0 : parseFloat($('#f-risk').value) || 0,
+        rr: veto ? 0 : parseFloat($('#f-rr').value) || 0,
         thesis: $('#f-thesis').value.trim(),
         hindsight: $('#f-hindsight').value.trim(),
         image: state.image,
@@ -521,7 +714,8 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
         stack_ratio: stdv ? numOrNull(fields.stack_ratio) : null,
         entry_delay_sec: stdv ? numOrNull(fields.entry_delay_sec) : null,
         planned_stop: tagged ? numOrNull(fields.planned_stop) : null,
-        entry_price: mm ? numOrNull(fields.entry_price) : null,
+        // Both tagged models now, not MM alone — see the note in stdvPanel.
+        entry_price: tagged ? numOrNull(fields.entry_price) : null,
         actual_exit: tagged ? numOrNull(fields.actual_exit) : null,
         target: tagged ? [...state.target] : [],
         be_moved: beMoved,
@@ -533,11 +727,25 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
         day_type: stdv ? fields.day_type || null : null,
         news_window: stdv && fields.news_window,
         rule_broken: tagged ? [...state.rule_broken] : [],
-        account_id: $('#f-account').value || null,
+        account_id: accountId,
+
+        // The discretion audit. Unlike the model tags above, none of this is
+        // cleared by the model switch or the kind switch: "would a mechanical
+        // run have fired" is a question about the decision, and it stays
+        // answered whether you took the trade under STDV, under MM, or not at
+        // all.
+        conviction: normaliseConviction($('#f-conviction').value),
+        mech_trigger: state.mech_trigger,
+        discretionary_act: [...state.discretionary_act],
+        mech_counterfactual_r: numOrNull($('#f-mech-cf-r').value),
+        mech_entry: numOrNull($('#f-mech-entry').value),
+        mech_stop: numOrNull($('#f-mech-stop').value),
+        mech_target: numOrNull($('#f-mech-target').value),
+        mech_exit: numOrNull($('#f-mech-exit').value),
       })
       // Only remembered once the save succeeded, and only when an account was
       // actually picked — clearing the field is not a new default.
-      if ($('#f-account').value) rememberLastUsedAccount($('#f-account').value)
+      if (accountId) rememberLastUsedAccount(accountId, scope)
       close()
       onSaved?.()
     } catch (e) {
@@ -549,6 +757,9 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
   overlay.addEventListener('click', async (e) => {
     if (e.target === overlay) return close()
 
+    const kindSeg = e.target.closest('.seg[data-kind]')
+    if (kindSeg) return setKind(kindSeg.dataset.kind)
+
     const seg = e.target.closest('.seg[data-model]')
     if (seg) return setModel(seg.dataset.model)
 
@@ -556,6 +767,8 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
     if (p) {
       if (p.dataset.dropTarget) {
         state.target.delete(p.dataset.dropTarget)
+      } else if (p.dataset.multi === 'discretionary_act') {
+        toggleDiscretionaryAct(p.dataset.val)
       } else if (p.dataset.multi) {
         const set = state[p.dataset.multi]
         set.has(p.dataset.val) ? set.delete(p.dataset.val) : set.add(p.dataset.val)
@@ -595,6 +808,7 @@ export async function openTradeForm({ trade = {}, onSaved } = {}) {
   document.addEventListener('keydown', onKey)
   document.addEventListener('paste', onPaste)
 
+  applyKind()
   renderPanel()
   renderUpload()
   $('#f-date').focus()

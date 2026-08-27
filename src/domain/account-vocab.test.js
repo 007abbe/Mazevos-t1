@@ -2,14 +2,36 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ACCOUNT_TYPES, ACCOUNT_NAME_MAX, isAccountType, validateAccount,
+  BACKTEST_ACCOUNT_TYPE, isBacktestAccount, backtestAccountIds,
 } from './account-vocab.js'
 
 const valid = { name: 'Eval1', type: 'Evaluation' }
 
-test('the four types are the vocabulary', () => {
-  assert.deepEqual([...ACCOUNT_TYPES].sort(), ['Demo', 'Evaluation', 'Funded', 'Live'])
+test('the five types are the vocabulary', () => {
+  assert.deepEqual([...ACCOUNT_TYPES].sort(), [
+    'Backtest', 'Demo', 'Evaluation', 'Funded', 'Live',
+  ])
   assert.ok(isAccountType('Funded'))
   assert.ok(!isAccountType('funded'))
+})
+
+test('Backtest is a type, not a flag — an account cannot be Live and backtest', () => {
+  assert.ok(isAccountType(BACKTEST_ACCOUNT_TYPE))
+  assert.ok(isBacktestAccount({ type: 'Backtest' }))
+  assert.ok(!isBacktestAccount({ type: 'Live' }))
+  // Unassigned trades pass null here and must not fall into the backtest side.
+  assert.ok(!isBacktestAccount(null))
+  assert.ok(!isBacktestAccount(undefined))
+})
+
+test('backtestAccountIds picks out only the backtest accounts', () => {
+  const ids = backtestAccountIds([
+    { id: 'a', type: 'Live' },
+    { id: 'b', type: 'Backtest' },
+    { id: 'c', type: 'Backtest' },
+  ])
+  assert.deepEqual([...ids].sort(), ['b', 'c'])
+  assert.equal(backtestAccountIds().size, 0)
 })
 
 test('a named, typed account is valid', () => {

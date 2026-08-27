@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applyFilters, byAccount, tradeLabel, NO_FILTERS, UNASSIGNED } from './filters.js'
+import {
+  applyFilters, byAccount, byScope, tradeLabel, NO_FILTERS, UNASSIGNED, SCOPES,
+} from './filters.js'
 
 const trade = (over = {}) => ({
   num: 1,
@@ -141,4 +143,83 @@ test('the account filter combines with the others', () => {
 
 test('NO_FILTERS leaves every account visible', () => {
   assert.equal(applyFilters(accountRows(), NO_FILTERS).length, 3)
+})
+
+/* ---- Scope: which of the two journals a trade belongs to ---- */
+
+const BACKTEST = new Set(['bt1', 'bt2'])
+
+const scopeRows = () => [
+  trade({ num: 1, account_id: 'live1' }),
+  trade({ num: 2, account_id: 'bt1' }),
+  trade({ num: 3, account_id: null }),
+  trade({ num: 4, account_id: 'bt2' }),
+]
+
+test('the backtest journal shows only trades on backtest accounts', () => {
+  assert.deepEqual(
+    byScope(scopeRows(), SCOPES.BACKTEST, BACKTEST).map((t) => t.num),
+    [2, 4]
+  )
+})
+
+test('unassigned trades are the live journal’s, never the backtest one’s', () => {
+  // All 57 pre-accounts rows are unassigned. Defaulting them into the backtest
+  // would delete real P&L from the live tiles.
+  assert.deepEqual(
+    byScope(scopeRows(), SCOPES.LIVE, BACKTEST).map((t) => t.num),
+    [1, 3]
+  )
+})
+
+test('the two scopes partition the journal with no overlap and no loss', () => {
+  const rows = scopeRows()
+  const live = byScope(rows, SCOPES.LIVE, BACKTEST)
+  const backtest = byScope(rows, SCOPES.BACKTEST, BACKTEST)
+
+  assert.equal(live.length + backtest.length, rows.length)
+  assert.equal(live.filter((t) => backtest.includes(t)).length, 0)
+})
+
+test('with no backtest accounts every trade is live', () => {
+  assert.equal(byScope(scopeRows(), SCOPES.BACKTEST, new Set()).length, 0)
+  assert.equal(byScope(scopeRows(), SCOPES.LIVE, new Set()).length, 4)
+})
+
+/* ---- Kind: trades, vetoes, or both ---- */
+
+const kindRows = () => [
+  trade({ num: 1, kind: 'trade' }),
+  trade({ num: 2, kind: 'veto', status: null }),
+  trade({ num: 3, kind: null }), // logged before vetoes existed
+]
+
+test('no kind filter shows trades and vetoes together', () => {
+  assert.equal(applyFilters(kindRows(), { kind: '' }).length, 3)
+})
+
+test('trades only keeps the rows with no kind — those are trades', () => {
+  assert.deepEqual(
+    applyFilters(kindRows(), { kind: 'trade' }).map((t) => t.num),
+    [1, 3]
+  )
+})
+
+test('vetoes only narrows to the passed-on ideas', () => {
+  assert.deepEqual(
+    applyFilters(kindRows(), { kind: 'veto' }).map((t) => t.num),
+    [2]
+  )
+})
+
+test('the kind filter combines with the account filter', () => {
+  const rows = [
+    trade({ num: 1, account_id: 'a', kind: 'veto' }),
+    trade({ num: 2, account_id: 'a', kind: 'trade' }),
+    trade({ num: 3, account_id: 'b', kind: 'veto' }),
+  ]
+  assert.deepEqual(
+    applyFilters(rows, { account: 'a', kind: 'veto' }).map((t) => t.num),
+    [1]
+  )
 })

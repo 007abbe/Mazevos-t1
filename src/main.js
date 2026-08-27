@@ -4,6 +4,7 @@ import { onSummary } from './lib/summary.js'
 import { fmtMoney } from './journal/stats.js'
 import { esc } from './lib/ui-text.js'
 import { renderJournal } from './journal/index.js'
+import { SCOPES } from './journal/filters.js'
 import { statistics } from './statistics/index.js'
 import { dom } from './agents/dom/index.js'
 import { finski } from './agents/finski/index.js'
@@ -35,7 +36,18 @@ const VIEWS = [
         day: 'numeric',
       })
     },
-    mount: renderJournal,
+    mount: (el, ctx) => renderJournal(el, { ...ctx, scope: SCOPES.LIVE }),
+  },
+  {
+    // The same view over Backtest accounts. It is a separate nav entry rather
+    // than a toggle inside the journal because the numbers must never be
+    // glanced at as if they were live — and because the two need their own
+    // remembered filters, which a toggle would share.
+    id: 'backtest',
+    title: 'Backtest',
+    pageTitle: 'Backtest',
+    subtitle: 'Simulated entries · kept out of every live statistic',
+    mount: (el, ctx) => renderJournal(el, { ...ctx, scope: SCOPES.BACKTEST }),
   },
   statistics,
   dom,
@@ -51,6 +63,8 @@ const VIEWS = [
  */
 const ICONS = {
   journal: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>',
+  // A clock turned back: the journal, replayed over history you did not trade.
+  backtest: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/>',
   statistics: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
   dom: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
   gnosis: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',

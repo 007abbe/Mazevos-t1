@@ -1,11 +1,13 @@
 import {
   ACCOUNT_TYPES, DEFAULT_ACCOUNT_TYPE, ACCOUNT_NAME_MAX, ACCOUNT_NOTE_MAX, validateAccount,
+  BACKTEST_ACCOUNT_TYPE, backtestAccountIds,
 } from '../domain/account-vocab.js'
+import { isRealTrade, isVeto } from '../domain/veto-vocab.js'
 import {
   listAccounts, createAccount, deleteAccount, countTradesByAccount, assignTradesToAccount,
 } from './accounts.js'
 import { listTrades } from './trades.js'
-import { tradeLabel } from './filters.js'
+import { tradeLabel, SCOPES } from './filters.js'
 import { accountTypeClass, accountTypeBadge, accountName } from '../lib/account-badges.js'
 import { fmtMoney } from './stats.js'
 import { esc, explainFailure } from '../lib/ui-text.js'
@@ -35,16 +37,31 @@ const TITLES = {
 /** Plural that reads correctly at 1 without an "(s)". */
 const tradeCount = (n) => `${n} ${n === 1 ? 'trade' : 'trades'}`
 
+/**
+ * An account's row count, with vetoes named separately rather than folded in.
+ * "7 trades" beside a Net P&L that only nine of them contributed to is a panel
+ * that contradicts itself — the same reason the counts here are taken from the
+ * loaded window rather than queried exactly.
+ */
+const entryCount = (trades, vetoes) =>
+  vetoes ? `${tradeCount(trades)} · ${vetoes} veto${vetoes === 1 ? '' : 'es'}` : tradeCount(trades)
+
 const typePill = (type, selected) =>
   `<button type="button" class="pill acct-pill ${accountTypeClass(type)}${type === selected ? ' on' : ''}"
            data-type="${esc(type)}" aria-pressed="${type === selected}">${esc(type)}</button>`
 
-function renderList(accounts, counts) {
+function renderList(accounts, counts, vetoCounts, backtest) {
   if (!accounts.length) {
-    return `<p class="muted">No accounts yet. Create one, then pick it when you log a trade.</p>`
+    return backtest
+      ? `<p class="muted">No backtest accounts yet. Create one — it behaves exactly like a real
+         account, but its entries stay out of the live journal and out of every live statistic.</p>`
+      : `<p class="muted">No accounts yet. Create one, then pick it when you log a trade.</p>`
   }
 
-  const unassigned = counts.get(null) ?? 0
+  // Unassigned trades belong to the live journal (see byScope in filters.js), so
+  // the hint that offers to file them would be pointing at the wrong journal
+  // here. Backtest entries always have an account; the form refuses otherwise.
+  const unassigned = backtest ? 0 : (counts.get(null) ?? 0)
 
   return `
     <div class="acct-list">
@@ -56,7 +73,7 @@ function renderList(accounts, counts) {
             ${accountName(a)}
             ${accountTypeBadge(a.type)}
           </span>
-          <span class="acct-row-meta">${tradeCount(counts.get(a.id) ?? 0)}</span>
+          <span class="acct-row-meta">${entryCount(counts.get(a.id) ?? 0, vetoCounts.get(a.id) ?? 0)}</span>
         </button>`
         )
         .join('')}
@@ -142,7 +159,13 @@ function renderAssign(account, trades, picked) {
  * would render differently — a created or deleted account, or an assignment.
  * It is not called on close, so cancelling costs nothing.
  */
-export async function openAccountsModal({ onChanged } = {}) {
+export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {}) {
+  // Opened from the Backtest journal, this manages backtest accounts only, and
+  // creating one defaults to the Backtest type. Showing all five types in one
+  // list would make "which accounts does this journal have" a question you
+  // answer by reading badges.
+  const backtest = scope === SCOPES.BACKTEST
+
   const overlay = document.createElement('div')
   overlay.className = 'overlay'
   overlay.innerHTML = `
@@ -167,10 +190,15 @@ export async function openAccountsModal({ onChanged } = {}) {
 
   let accounts = []
   let counts = new Map()
+  let vetoCounts = new Map()
   let trades = []
   let mode = 'list'
   let current = null
-  let draft = { name: '', note: '', type: DEFAULT_ACCOUNT_TYPE }
+  let draft = {
+    name: '',
+    note: '',
+    type: backtest ? BACKTEST_ACCOUNT_TYPE : DEFAULT_ACCOUNT_TYPE,
+  }
   let picked = new Set()
 
   function close() {
@@ -183,9 +211,13 @@ export async function openAccountsModal({ onChanged } = {}) {
     if (e.key === 'Escape') close()
   }
 
-  /** Trades on one account, for the detail view's tiles. */
+  /**
+   * Trades on one account, for the detail view's tiles. Vetoes are dropped
+   * first: they have no fill, so counting them would put a zero into the
+   * win-rate denominator for a trade that was never taken.
+   */
   const statsFor = (accountId) => {
-    const own = trades.filter((t) => t.account_id === accountId)
+    const own = trades.filter((t) => t.account_id === accountId && isRealTrade(t))
     const wins = own.filter((t) => Number(t.pnl ?? 0) > 0).length
     return {
       netPnl: own.reduce((a, t) => a + Number(t.pnl ?? 0), 0),
@@ -218,7 +250,7 @@ export async function openAccountsModal({ onChanged } = {}) {
     $('#a-title').textContent = TITLES[mode]
     err.textContent = ''
 
-    if (mode === 'list') body.innerHTML = renderList(accounts, counts)
+    if (mode === 'list') body.innerHTML = renderList(accounts, counts, vetoCounts, backtest)
     else if (mode === 'create') body.innerHTML = renderCreate(draft)
     else if (mode === 'detail') {
       body.innerHTML = renderDetail(current, counts.get(current.id) ?? 0, statsFor(current.id))
@@ -230,13 +262,21 @@ export async function openAccountsModal({ onChanged } = {}) {
 
   /** Re-reads accounts and trades; every count and total below derives from these. */
   async function load() {
-    ;[accounts, trades] = await Promise.all([listAccounts(), listTrades()])
+    const [all, loaded] = await Promise.all([listAccounts(), listTrades()])
 
     // The picker shows which account a taken trade is already on, and the
-    // trades it lists carry only an id.
-    const byId = new Map(accounts.map((a) => [a.id, a.name]))
-    trades = trades.map((t) => ({ ...t, accountLabel: byId.get(t.account_id) ?? null }))
-    counts = countTradesByAccount(trades)
+    // trades it lists carry only an id. Labels come from *every* account, not
+    // just this journal's — a trade already filed elsewhere should say so.
+    const byId = new Map(all.map((a) => [a.id, a.name]))
+    trades = loaded.map((t) => ({ ...t, accountLabel: byId.get(t.account_id) ?? null }))
+
+    // Counted separately so the row can say "9 trades · 3 vetoes" and the
+    // account's Net P&L stays a total of the nine.
+    counts = countTradesByAccount(trades.filter(isRealTrade))
+    vetoCounts = countTradesByAccount(trades.filter(isVeto))
+
+    const backtestIds = backtestAccountIds(all)
+    accounts = all.filter((a) => backtestIds.has(a.id) === backtest)
   }
 
   const fail = (e, prefix) => {
@@ -264,6 +304,15 @@ export async function openAccountsModal({ onChanged } = {}) {
       current = accounts.find((a) => a.id === created.id) ?? null
       mode = current ? 'detail' : 'list'
       render()
+
+      // Every type is offered from either journal, so you can create a Backtest
+      // account without first navigating to the Backtest journal. When you do,
+      // it lands in the other journal's list and silently vanishing from this
+      // one would read as a failed save.
+      if (!current) {
+        const where = created.type === BACKTEST_ACCOUNT_TYPE ? 'Backtest journal' : 'live journal'
+        err.textContent = `Created “${created.name}” as a ${created.type} account — it lives in the ${where}.`
+      }
     } catch (e) {
       fail(e, 'Could not create the account')
       btn.disabled = false
@@ -271,7 +320,10 @@ export async function openAccountsModal({ onChanged } = {}) {
   }
 
   async function confirmDelete() {
-    const n = counts.get(current.id) ?? 0
+    // Every row on the account, vetoes included — they survive the delete too,
+    // and a warning that undercounts what it is about to orphan is worse than
+    // no warning.
+    const n = (counts.get(current.id) ?? 0) + (vetoCounts.get(current.id) ?? 0)
     const warning = n
       ? `Delete “${current.name}”?\n\nIts ${tradeCount(n)} will be kept, but will no longer be on any account.`
       : `Delete “${current.name}”?`

@@ -1,6 +1,9 @@
 import { supabase } from '../lib/supabase.js'
 import { getUser } from '../lib/auth.js'
 import { fromRow, toRow, stampNow, uid } from './mapping.js'
+import { listAccounts } from './accounts.js'
+import { backtestAccountIds } from '../domain/account-vocab.js'
+import { isRealTrade } from '../domain/veto-vocab.js'
 
 /**
  * Cloud-first: Supabase is the only store. There is no localStorage mirror and
@@ -17,8 +20,11 @@ import { fromRow, toRow, stampNow, uid } from './mapping.js'
  * journal's search box filters on it client-side, over the trades already
  * loaded. Fetching it per-row on keystroke would be a query per character.
  */
-const LIST_COLUMNS =
-  'id, num, date, type, status, pnl, risk, rr, thesis, model, setup_type, mm_setup, regime, day_type, account_id'
+const LIST_COLUMNS = `
+  id, num, date, type, status, pnl, risk, rr, thesis, model, setup_type, mm_setup,
+  regime, day_type, account_id, kind, veto_outcome, conviction, mech_trigger,
+  mech_counterfactual_r
+`
 
 /**
  * Reads trades for the signed-in user. RLS on the `trades` table scopes rows,
@@ -48,7 +54,8 @@ const ANALYSIS_COLUMNS = `
   id, num, date, type, status, pnl, risk, rr, thesis, hindsight,
   model, setup_type, mm_setup, band_touched, away_stack, stack_ratio,
   entry_delay_sec, planned_stop, entry_price, actual_exit, target, be_moved,
-  be_reason, regime, day_type, news_window, rule_broken, updated_at
+  be_reason, regime, day_type, news_window, rule_broken, account_id, kind,
+  conviction, mech_trigger, discretionary_act, mech_counterfactual_r, updated_at
 `
 
 /**
@@ -59,14 +66,21 @@ const ANALYSIS_COLUMNS = `
  * produce quietly wrong numbers rather than an error.
  */
 export async function listTradesForAnalysis({ limit = 500 } = {}) {
-  const { data, error } = await supabase
-    .from('trades')
-    .select(ANALYSIS_COLUMNS)
-    .order('date', { ascending: false })
-    .limit(limit)
+  // Accounts come along because DOM analyses *executed* trades: a backtest
+  // account's fills were never real, and telling the model that a simulated run
+  // is your live edge is worse than telling it nothing. Handful of rows, and it
+  // rides alongside the trade query rather than after it.
+  const [{ data, error }, accounts] = await Promise.all([
+    supabase.from('trades').select(ANALYSIS_COLUMNS).order('date', { ascending: false }).limit(limit),
+    listAccounts().catch(() => []),
+  ])
 
   if (error) throw error
-  return (data ?? []).map(fromRow)
+
+  const backtest = backtestAccountIds(accounts)
+  return (data ?? [])
+    .map(fromRow)
+    .filter((t) => isRealTrade(t) && !backtest.has(t.account_id))
 }
 
 /** One full trade, including the heavy image/thesis/hindsight fields. */

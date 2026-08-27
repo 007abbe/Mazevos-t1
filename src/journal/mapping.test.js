@@ -43,6 +43,16 @@ const dbRow = {
   news_window: false,
   rule_broken: ['early_entry', 'traded_news'],
   account_id: '00000000-0000-0000-0000-0000000000ac',
+  kind: 'trade',
+  veto_outcome: null,
+  conviction: 7,
+  mech_trigger: 'yes',
+  discretionary_act: ['entry_shifted', 'managed_early'],
+  mech_counterfactual_r: '1.80',
+  mech_entry: '19880.00',
+  mech_stop: '19845.50',
+  mech_target: '19960.00',
+  mech_exit: '19943.25',
   updated_at: 1753363800000,
 }
 
@@ -58,7 +68,31 @@ test('fromRow -> toRow round-trips every column', () => {
     stack_ratio: 1.8,
     planned_stop: 19850.25,
     actual_exit: 19912.75,
+    mech_counterfactual_r: 1.8,
+    mech_entry: 19880,
+    mech_stop: 19845.5,
+    mech_target: 19960,
+    mech_exit: 19943.25,
   })
+})
+
+test('mech_counterfactual_r arrives as a string and must leave as a number', () => {
+  // The discretion delta averages this column. An unmapped '1.80' would
+  // concatenate rather than add, and the tile would be quietly wrong instead of
+  // visibly broken.
+  const t = fromRow({ ...dbRow, mech_counterfactual_r: '1.80' })
+  assert.equal(t.mech_counterfactual_r, 1.8)
+  assert.equal(typeof t.mech_counterfactual_r, 'number')
+})
+
+test('a null kind survives as null — pre-veto rows are not rewritten', () => {
+  // Readers resolve null to 'trade' themselves (tradeKind). Stamping 'trade'
+  // here would rewrite history on the first edit of an old trade.
+  assert.equal(toRow(fromRow({ id: 'x', updated_at: 1 }), USER).kind, null)
+})
+
+test('discretionary_act is never null, matching rule_broken and target', () => {
+  assert.deepEqual(toRow(fromRow({ id: 'x', updated_at: 1 }), USER).discretionary_act, [])
 })
 
 test('round-trip covers the full column set — no field silently dropped', () => {
@@ -68,7 +102,9 @@ test('round-trip covers the full column set — no field silently dropped', () =
     'mm_setup', 'band_touched', 'away_stack', 'stack_ratio', 'entry_delay_sec',
     'planned_stop', 'entry_price', 'actual_exit', 'target', 'be_moved',
     'be_reason', 'regime', 'gamma_regime', 'major_regime', 'day_type',
-    'news_window', 'rule_broken', 'account_id',
+    'news_window', 'rule_broken', 'account_id', 'kind', 'veto_outcome',
+    'conviction', 'mech_trigger', 'discretionary_act', 'mech_counterfactual_r',
+    'mech_entry', 'mech_stop', 'mech_target', 'mech_exit',
   ]
   assert.deepEqual(Object.keys(toRow(fromRow(dbRow), USER)).sort(), [...COLUMNS].sort())
 })

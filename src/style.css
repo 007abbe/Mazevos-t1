@@ -1158,11 +1158,13 @@ pre.brief {
 .acct-funded { color: var(--green); }
 .acct-eval { color: var(--blue); }
 .acct-demo { color: var(--text2); }
+.acct-backtest { color: var(--amber); }
 
 .badge.acct-live { background: var(--purple-bg); }
 .badge.acct-funded { background: var(--green-bg); }
 .badge.acct-eval { background: var(--blue-bg); }
 .badge.acct-demo { background: var(--surface2); border: 1px solid var(--border); }
+.badge.acct-backtest { background: var(--amber-bg); }
 
 .acct-name { font-weight: 500; }
 .acct-none { color: var(--text3); }
@@ -1214,6 +1216,7 @@ pre.brief {
 .acct-pill.on.acct-funded { background: var(--green-bg); border-color: var(--green); color: var(--green); }
 .acct-pill.on.acct-eval { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
 .acct-pill.on.acct-demo { background: var(--surface2); border-color: var(--border2); color: var(--text); }
+.acct-pill.on.acct-backtest { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); }
 
 .acct-detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
 .acct-detail-name { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
@@ -1303,6 +1306,172 @@ pre.brief {
 .acct-pick-date { font-family: var(--mono); color: var(--text3); font-size: 11px; }
 .acct-pick-pnl { font-size: 12px; }
 .acct-pick-on { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+
+/*
+ * ---- Veto rows and the discretion audit ----
+ *
+ * Amber throughout, shared with the Backtest account type: both mark a row
+ * where no money changed hands. That is the one thing about a journal you must
+ * not misread at a glance, so it gets its own colour rather than a subtler
+ * weight or opacity change.
+ */
+.badge-veto {
+  margin-left: 8px;
+  padding: 2px 7px;
+  background: var(--amber-bg);
+  color: var(--amber);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A left rail rather than a tint: the row stays as readable as any other, and
+   the marker survives the hover and focus backgrounds. */
+table.trades tbody tr.row-veto td:first-child {
+  box-shadow: inset 2px 0 0 var(--amber);
+}
+
+.veto-stat { color: var(--amber); }
+
+/* Present but not yet measurable — the tile is doing its job by showing an em
+   dash, so it should not shout the way a real zero would. */
+.muted-stat { color: var(--text3); }
+
+/* The sample size the delta rests on, inline in the tile's label. */
+.stat-n {
+  margin-left: 6px;
+  color: var(--text2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Sits beside Accounts and reads as navigation, not as a filter. */
+.btn-scope { color: var(--amber); border-color: var(--amber-bg); }
+.btn-scope:hover { border-color: var(--amber); color: var(--amber); }
+
+/*
+ * ---- The Trade / Veto switch ----
+ *
+ * Built on the same segmented control as the model switch, but full width and
+ * at the top of the form: it decides what every field below it means, so it
+ * cannot look like one more tag among the others.
+ */
+.kind-field { gap: 8px; margin-bottom: 4px; }
+
+.kind-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.modal .kind-switch .seg {
+  width: 100%;
+  margin: 0;
+  padding: 9px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition);
+}
+
+.modal .kind-switch .seg:hover { color: var(--text); }
+
+.modal .kind-switch .seg-trade.on {
+  background: var(--green-bg);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.modal .kind-switch .seg-veto.on {
+  background: var(--amber-bg);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.kind-hint {
+  margin: 0;
+  color: var(--text3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Marks the fields the switch has taken away. `.modal .field` is display:flex
+   and `.modal label` is a block, so the bare `hidden` attribute loses to both —
+   this rule comes last in the file and wins on source order. */
+.modal [hidden] { display: none; }
+
+/* The account is mandatory in the Backtest journal; an unassigned entry would
+   land in the live one. */
+.modal .req {
+  color: var(--amber);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.modal-head .badge { margin-left: 10px; vertical-align: middle; }
+
+/* The discretion block reuses the model-tag panel's chrome, so the two read as
+   the same kind of question asked twice. */
+.modal .disc { margin-top: 4px; }
+.modal .disc .tag-row + .tag-group,
+.modal .disc .tag-group + .tag-row { margin-top: 14px; }
+
+/* ---- Statistics: the discretion audit and the distance panel ---- */
+
+.audit-headline {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1;
+  margin-bottom: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-headline.ok { color: var(--green); }
+.audit-headline.bad { color: var(--red); }
+.audit-headline.neu { color: var(--text2); }
+
+.audit-explain { margin: 0; font-size: 12px; line-height: 1.6; }
+.audit-explain + .audit-explain { margin-top: 8px; }
+.audit-explain b { color: var(--text); font-weight: 500; }
+
+.audit-row { align-items: baseline; }
+.audit-label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+
+.audit-note {
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* The sample size beside a figure, on this page and in the journal tiles. */
+.row-n {
+  margin-left: 6px;
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* The distance panel nests a stat grid inside a panel, which already has its
+   own padding — the cards should sit flush rather than open a second margin. */
+.panel .stats-grid { margin-bottom: 14px; }
+
+/* Wider than the 84px price boxes: this one holds a signed R with a decimal. */
+.modal #f-mech-cf-r { width: 110px; }
+.modal #f-conviction { width: 72px; }
 
 /* ---- Responsive ---- */
 @media (max-width: 900px) {

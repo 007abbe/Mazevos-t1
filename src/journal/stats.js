@@ -24,10 +24,25 @@
  * query, so they are known to exist on the production table.
  */
 
+import { isRealTrade, isVeto } from '../domain/veto-vocab.js'
+
 const num = (v) => Number(v ?? 0)
 
+/**
+ * Header tiles for a set of trades. Veto rows are dropped first and counted
+ * separately.
+ *
+ * This is the enforcement point for the whole veto idea, not a display nicety.
+ * A veto has no fill: its P&L is 0 and its risk is 0, so leaving it in would
+ * add a row to `count`, a zero to the win-rate denominator, and nothing to
+ * `netPnl` — a journal that logs its near-misses honestly would show a falling
+ * win rate as a reward. `vetoes` is returned so the UI can still say how many
+ * there were.
+ */
 export function computeStats(trades) {
-  const closed = trades.filter((t) => t.pnl !== null && t.pnl !== undefined)
+  const vetoes = trades.filter(isVeto).length
+  const taken = trades.filter(isRealTrade)
+  const closed = taken.filter((t) => t.pnl !== null && t.pnl !== undefined)
   const wins = closed.filter((t) => num(t.pnl) > 0)
   const losses = closed.filter((t) => num(t.pnl) < 0)
 
@@ -41,6 +56,7 @@ export function computeStats(trades) {
 
   return {
     count: closed.length,
+    vetoes,
     wins: wins.length,
     losses: losses.length,
     winRate: closed.length ? Math.round((wins.length / closed.length) * 100) : 0,

@@ -13,6 +13,9 @@
  * in `index.js`; nothing else has to change.
  */
 
+import { discretionDelta, mechSplit } from '../domain/discretion.js'
+import { pointStats } from '../domain/points.js'
+
 const num = (v) => Number(v ?? 0)
 const sum = (rows) => rows.reduce((a, t) => a + num(t.pnl), 0)
 const mean = (values) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : null)
@@ -109,12 +112,25 @@ function statusesPresent(trades) {
   return [...known, ...extra]
 }
 
-export function computeStatistics(trades = []) {
+/**
+ * Computes the page.
+ *
+ * @param {object[]} trades executed trades only — vetoes and backtest entries
+ *   are filtered out by the caller, because every block above is a P&L block.
+ * @param {object[]} audited the same set *plus* vetoes, for the discretion
+ *   block alone. A veto is a decision with an R of exactly 0, so it belongs in
+ *   the discretion numbers and nowhere else on this page. Defaults to `trades`,
+ *   which is the correct degenerate answer when there are no vetoes.
+ */
+export function computeStatistics(trades = [], audited = trades) {
   return {
     totals: totals(trades),
     extremes: extremes(trades),
     averages: averages(trades),
     curve: curve(trades),
+    points: pointStats(trades),
+    discretion: discretionDelta(audited),
+    mech: mechSplit(audited),
     byDirection: group(
       trades,
       DIRECTIONS.map((d) => ({ key: { field: 'type', value: d }, label: d }))

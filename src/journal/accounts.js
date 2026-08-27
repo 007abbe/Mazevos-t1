@@ -129,6 +129,16 @@ export async function assignTradesToAccount(tradeIds, accountId) {
 const FILTER_KEY = 'mazevo.journal.account'
 const LAST_USED_KEY = 'mazevo.lastAccount'
 
+/**
+ * Both preferences are per-journal: the account you were last looking at in the
+ * Backtest journal is not the one you want restored in the live one, and a
+ * shared key would have each page fight the other for it.
+ *
+ * The live journal keeps the bare key it has always used, so nothing already in
+ * a trader's localStorage is orphaned by this change.
+ */
+const scoped = (key, scope) => (scope && scope !== 'live' ? `${key}.${scope}` : key)
+
 const read = (key) => {
   try {
     return localStorage.getItem(key) || ''
@@ -154,21 +164,21 @@ const write = (key, value) => {
  * `valid` is the set of ids that still exist; anything else falls back to all.
  * The unassigned sentinel is handled by the caller, which knows it.
  */
-export function rememberedFilter(validIds, allowed = []) {
-  const stored = read(FILTER_KEY)
+export function rememberedFilter(validIds, allowed = [], scope) {
+  const stored = read(scoped(FILTER_KEY, scope))
   if (allowed.includes(stored)) return stored
   return validIds.includes(stored) ? stored : ''
 }
 
-export const rememberFilter = (value) => write(FILTER_KEY, value)
+export const rememberFilter = (value, scope) => write(scoped(FILTER_KEY, scope), value)
 
 /** The account the last trade was logged on, used to prefill the trade form. */
-export function lastUsedAccount(validIds) {
-  const stored = read(LAST_USED_KEY)
+export function lastUsedAccount(validIds, scope) {
+  const stored = read(scoped(LAST_USED_KEY, scope))
   return validIds.includes(stored) ? stored : ''
 }
 
-export const rememberLastUsedAccount = (id) => write(LAST_USED_KEY, id)
+export const rememberLastUsedAccount = (id, scope) => write(scoped(LAST_USED_KEY, scope), id)
 
 /** Clears one trade's account, leaving the trade itself untouched. */
 export async function unassignTrade(tradeId) {
