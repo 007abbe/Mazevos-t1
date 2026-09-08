@@ -8,6 +8,7 @@
 
 import { computeModelRisk, yesterdayContext } from '../../domain/model-risk.js'
 import { etDate } from '../../domain/et-session.js'
+import { macroParagraph } from '../../domain/mac/narrative.js'
 import { todayUsdEvents } from './calendar.js'
 
 /**
@@ -40,6 +41,13 @@ export function buildBriefInputs({
  * The request body for the Edge Function. Deliberately narrow: only the fields
  * the prompt template reads, with `dt` dropped — the function never compares
  * times, it only reproduces the labels we send it.
+ *
+ * The mac snapshot is deliberately *not* here. Finski's prompt forbids
+ * direction, mac is directional, and the two are reconciled by keeping the
+ * macro paragraph out of the model's hands entirely: it is written by
+ * `src/domain/mac/narrative.js` and spliced in by `formatBrief` after the model
+ * has finished. Sending it here would put a bull/bear read in front of a model
+ * told never to have one.
  */
 export function toFunctionPayload({ risk, vix, vvix, levels, events, yesterday }) {
   return {
@@ -63,12 +71,27 @@ export function toFunctionPayload({ risk, vix, vvix, levels, events, yesterday }
  * The `data` column: the inputs a stored brief was written from, so an old
  * brief can be read back against the tape it described.
  */
-export function toStoredData({ vix, vvix, levels, events, yesterday }) {
+export function toStoredData({ vix, vvix, levels, events, yesterday, macro = null }) {
   return {
     vix,
     vvix,
     levels,
     yesterday,
+    // The regime as it stood when the brief was written, not a live lookup.
+    // `macro_snapshots` keeps the full object; this is the slice needed to read
+    // an old brief back against the lean it was written under, and it must not
+    // change when the snapshot is recomputed.
+    macro: macro
+      ? {
+          date: macro.date,
+          version: macro.version,
+          bull_pct: macro.l1.bar.bull_pct,
+          label: macro.l1.bar.label,
+          bias_raw: macro.l1.bias_raw,
+          conviction: macro.l1.conviction,
+          vol_regime: macro.l2.vol_regime,
+        }
+      : null,
     events: events.map((e) => ({
       title: e.title,
       impact: e.impact,
@@ -82,11 +105,18 @@ export function toStoredData({ vix, vvix, levels, events, yesterday }) {
 }
 
 /**
- * Header + prose, as stored and displayed. The date is the New York trading
- * date — FlowJournal used the UTC one, which rolls over mid-evening CET and
- * would date an evening-written brief to the following session.
+ * Header + macro + prose, as stored and displayed. The date is the New York
+ * trading date — FlowJournal used the UTC one, which rolls over mid-evening CET
+ * and would date an evening-written brief to the following session.
+ *
+ * The MACRO section sits between the deterministic header and the model's
+ * prose, which is exactly where it belongs on both counts: it is deterministic,
+ * like the header, and it frames the session before the vol-and-events read
+ * that follows. With no snapshot the section is dropped whole, so a day mac
+ * could not run produces a brief byte-identical to one written before mac
+ * existed.
  */
-export function formatBrief({ risk, prose, now }) {
+export function formatBrief({ risk, prose, now, macro = null }) {
   const header = [
     `FINSKI BRIEF — ${etDate(now)}`,
     `MODEL-RISK: ${risk.level}`,
@@ -95,7 +125,7 @@ export function formatBrief({ risk, prose, now }) {
     .filter(Boolean)
     .join('\n')
 
-  return `${header}\n\n${prose}`
+  return [header, macroParagraph(macro), prose].filter(Boolean).join('\n\n')
 }
 
 /**
@@ -110,7 +140,7 @@ export function formatBrief({ risk, prose, now }) {
  *   saveError: Error|null}>}
  */
 export async function generateBrief(
-  { vix, vvix = null, levels, trades = [], now = Date.now() },
+  { vix, vvix = null, levels, trades = [], macro = null, now = Date.now() },
   { fetchCalendar, requestBrief, saveBrief, onProgress = () => {} }
 ) {
   onProgress('Fetching calendar…')
@@ -128,12 +158,12 @@ export async function generateBrief(
   onProgress('Writing brief…')
   const { prose, truncated = false } = await requestBrief(toFunctionPayload(inputs))
 
-  const brief = formatBrief({ risk: inputs.risk, prose, now })
+  const brief = formatBrief({ risk: inputs.risk, prose, now, macro })
 
   let saved = true
   let saveError = null
   try {
-    await saveBrief({ risk: inputs.risk, brief, data: toStoredData(inputs) })
+    await saveBrief({ risk: inputs.risk, brief, data: toStoredData({ ...inputs, macro }) })
   } catch (err) {
     saved = false
     saveError = err
@@ -143,6 +173,7 @@ export async function generateBrief(
     brief,
     risk: inputs.risk,
     events: inputs.events,
+    macro,
     fromCache: calendar.fromCache ?? false,
     stale: calendar.stale ?? false,
     truncated,

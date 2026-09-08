@@ -245,3 +245,112 @@ test('a truncated response is flagged through to the caller', async () => {
 
   assert.equal(result.truncated, true)
 })
+
+/* ------------------------------------------------------ mac integration ---- */
+
+/**
+ * A mac snapshot, trimmed to what the brief reads. Deliberately directional:
+ * the point of these tests is that a bull/bear read reaches the brief without
+ * ever reaching the model.
+ */
+const MACRO = {
+  date: '2026-07-29',
+  version: 'mac-0.1',
+  l1: {
+    quadrant: 'stagflation_adjacent',
+    bias_raw: -3,
+    conviction: 'medium',
+    conviction_agreeing: 3,
+    regime_age_days: 8,
+    regime: { label: 'leaning_bear', since: '2026-07-21', pending: null, pending_streak: 0 },
+    bar: {
+      bull_pct: 38,
+      bear_pct: 62,
+      label: 'leaning_bear',
+      label_text: 'leaning bear',
+      sentence:
+        '38% bull / 62% bear — leaning bear. Shorts may have a tailwind; vol regime elevated, size capped.',
+      history_10: [44, 42, 40, 38],
+    },
+    headwinds: ['Core inflation re-accelerating'],
+    tailwinds: [],
+    watch: [],
+  },
+  l2: { vol_regime: 'elevated', size_cap: 0.75, spm_allowed: true, mm_preferred: true },
+  data_health: { missing: [], stale: [], carried: [] },
+}
+
+test('formatBrief is byte-identical to the pre-mac output with no snapshot', () => {
+  const risk = { level: 'LOW', triggered: [] }
+
+  assert.equal(
+    formatBrief({ risk, prose: 'REGIME\nCalm.', now: NOW }),
+    formatBrief({ risk, prose: 'REGIME\nCalm.', now: NOW, macro: null })
+  )
+  assert.equal(
+    formatBrief({ risk, prose: 'REGIME\nCalm.', now: NOW }),
+    'FINSKI BRIEF — 2026-07-29\nMODEL-RISK: LOW\n\nREGIME\nCalm.'
+  )
+})
+
+test('formatBrief splices MACRO between the header and the model prose', () => {
+  const brief = formatBrief({
+    risk: { level: 'LOW', triggered: [] },
+    prose: 'REGIME\nCalm.',
+    now: NOW,
+    macro: MACRO,
+  })
+
+  const header = brief.indexOf('MODEL-RISK: LOW')
+  const macro = brief.indexOf('MACRO (mac-0.1')
+  const prose = brief.indexOf('REGIME\nCalm.')
+
+  assert.ok(header < macro && macro < prose, 'header, then macro, then prose')
+  assert.match(brief, /38% bull \/ 62% bear/)
+})
+
+test('the macro snapshot never reaches the model', () => {
+  const payload = toFunctionPayload({ ...inputs(), macro: MACRO })
+
+  assert.equal('macro' in payload, false)
+  assert.doesNotMatch(JSON.stringify(payload), /bull|bear|leaning|macro/i)
+})
+
+test('the stored row keeps the lean the brief was written under', () => {
+  const stored = toStoredData({ ...inputs(), macro: MACRO })
+
+  assert.deepEqual(stored.macro, {
+    date: '2026-07-29',
+    version: 'mac-0.1',
+    bull_pct: 38,
+    label: 'leaning_bear',
+    bias_raw: -3,
+    conviction: 'medium',
+    vol_regime: 'elevated',
+  })
+  assert.equal(toStoredData(inputs()).macro, null)
+})
+
+test('generateBrief carries the snapshot into the brief, the row and the result', async () => {
+  const { deps: d, saved, requested } = deps()
+
+  const result = await generateBrief(
+    { vix: QUIET_VIX, levels: NO_LEVELS, macro: MACRO, now: NOW },
+    d
+  )
+
+  assert.match(result.brief, /MACRO \(mac-0\.1 · 2026-07-29\)/)
+  assert.equal(result.macro, MACRO)
+  assert.equal(saved[0].data.macro.bull_pct, 38)
+  assert.equal('macro' in requested[0], false, 'still nothing directional in the prompt payload')
+})
+
+test('a brief generated without mac is unchanged and reports the absence', async () => {
+  const { deps: d, saved } = deps()
+
+  const result = await generateBrief({ vix: QUIET_VIX, levels: NO_LEVELS, now: NOW }, d)
+
+  assert.equal(result.macro, null)
+  assert.doesNotMatch(result.brief, /MACRO/)
+  assert.equal(saved[0].data.macro, null)
+})

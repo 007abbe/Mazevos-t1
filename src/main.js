@@ -8,7 +8,7 @@ import { SCOPES } from './journal/filters.js'
 import { statistics } from './statistics/index.js'
 import { dom } from './agents/dom/index.js'
 import { finski } from './agents/finski/index.js'
-import { gnosis } from './agents/gnosis/index.js'
+import { reggie, runDailyMac } from './agents/reggie/index.js'
 import { office } from './office/index.js'
 
 const app = document.querySelector('#app')
@@ -18,7 +18,7 @@ let teardownShell = null
 
 /**
  * The journal plus every agent, as one list of views. Agents are mounted
- * through the same contract, so adding DOM or Gnosis is one import and one
+ * through the same contract, so adding DOM or Reggie is one import and one
  * array entry.
  */
 const VIEWS = [
@@ -51,7 +51,7 @@ const VIEWS = [
   },
   statistics,
   dom,
-  gnosis,
+  reggie,
   finski,
   office,
 ]
@@ -67,7 +67,9 @@ const ICONS = {
   backtest: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/>',
   statistics: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
   dom: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
-  gnosis: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  // A bar split left and right: mac's bear/bull reading, which is what Reggie
+  // leads with.
+  reggie: '<rect x="2" y="9" width="20" height="6" rx="1"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="5" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="19" y2="12"/>',
   finski: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
   office: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
 }
@@ -211,6 +213,11 @@ function renderSignedIn(user) {
   }
 
   show(VIEWS[0].id)
+
+  // mac, once a day, behind whatever view was opened. Deliberately unawaited
+  // and deliberately silent: it must not delay the first paint, and it reports
+  // for itself inside Reggie rather than over the top of the journal.
+  runDailyMac()
 }
 
 /** Mirrors whatever the last-loaded view published into the sidebar footer. */
