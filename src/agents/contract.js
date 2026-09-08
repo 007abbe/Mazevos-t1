@@ -3,7 +3,7 @@
  *
  * Every agent under `src/agents/<name>/` exports one of these from its
  * `index.js`. Finski is the first, so this is where the shape gets fixed —
- * DOM and Gnosis have to fit it without a rewrite, which is why it stays small:
+ * DOM and Reggie have to fit it without a rewrite, which is why it stays small:
  * identity, plus a single `mount` that owns its own element.
  *
  * Agents do not know about navigation, each other, or the shell. The shell

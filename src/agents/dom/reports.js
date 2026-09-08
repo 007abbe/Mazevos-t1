@@ -3,8 +3,7 @@ import { getUser } from '../../lib/auth.js'
 
 /**
  * The `dom_reports` table. Same columns FlowJournal writes
- * (trading-journal/index.html:1289), so rows stay readable by both apps — and
- * by Gnosis, which exports these rows into the Obsidian vault.
+ * (trading-journal/index.html:1289), so rows stay readable by both apps.
  */
 
 export const REPORT_HISTORY_LIMIT = 15

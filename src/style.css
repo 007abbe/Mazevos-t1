@@ -1037,82 +1037,474 @@ pre.brief {
 .stats-block summary:hover { color: var(--text); }
 .stats-block pre.brief { max-height: 420px; overflow-y: auto; font-size: 11px; }
 
-/* ---- Gnosis scan preview ---- */
-.scan-summary {
+/* ---- Reggie ---- */
+.reggie-options {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.reggie-option {
+  width: auto;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 3px);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.reggie-option:hover { color: var(--text); }
+
+.reggie-option.active {
+  background: var(--surface2);
+  border-color: var(--border2);
+  color: var(--text);
+}
+
+.reggie-blurb { margin: 0 0 18px; font-size: 12px; }
+
+/* ---- mac: the directional bar ---- */
+.mac-bar-card {
+  padding: 16px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/*
+ * Bear left, bull right, meeting at the split. Two filled halves rather than
+ * one bar with a marker: the number that matters is the ratio, and a single
+ * filled bar reads as progress toward something — which is the probability
+ * reading the bar is explicitly not, until phase 4 calibrates it.
+ */
+.mac-bar {
+  display: flex;
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+}
+
+.mac-bar-bear,
+.mac-bar-bull {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  transition: width var(--transition);
+}
+
+.mac-bar-bear {
+  justify-content: flex-start;
+  padding-left: 10px;
+  background: var(--red-bg);
+  color: var(--red);
+  border-right: 1px solid var(--border2);
+}
+
+.mac-bar-bull {
+  justify-content: flex-end;
+  padding-right: 10px;
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+/* Below roughly 18% a label no longer fits its half; hiding beats overflowing. */
+.mac-bar-bear span,
+.mac-bar-bull span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mac-sentence {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.mac-bar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.mac-tag {
+  padding: 3px 9px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text2);
+}
+
+.mac-tag-bull { border-color: var(--green-dim); color: var(--green); }
+.mac-tag-bear { border-color: var(--red-dim); color: var(--red); }
+.mac-tag-vol-elevated { border-color: var(--amber); color: var(--amber); }
+.mac-tag-vol-hostile { border-color: var(--red-dim); background: var(--red-bg); color: var(--red); }
+
+.mac-spark {
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin-top: 14px;
+  overflow: visible;
+}
+
+.mac-spark polyline {
+  fill: none;
+  stroke: var(--text2);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.mac-spark-bull polyline { stroke: var(--green); }
+.mac-spark-bear polyline { stroke: var(--red); }
+
+.mac-spark-mid {
+  stroke: var(--border2);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.mac-spark-caption,
+.mac-spark-empty { margin: 4px 0 0; font-size: 11px; }
+
+/* ---- mac: data health ---- */
+.mac-health {
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border: 1px solid;
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+
+.mac-health-ok {
+  border-color: var(--green-dim);
+  background: var(--green-bg);
+  color: var(--green);
+  margin: 0 0 14px;
+}
+
+.mac-health-warn {
+  border-color: var(--amber);
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.mac-health-warn ul { margin: 6px 0 0; padding-left: 18px; }
+.mac-health-warn li { margin-bottom: 3px; }
+
+/* ---- mac: factor chips ---- */
+.mac-factors {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 8px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.mac-factor {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border2);
+  border-radius: var(--radius);
+}
+
+.mac-factor-bull { border-left-color: var(--green); }
+.mac-factor-bear { border-left-color: var(--red); }
+
+.mac-factor summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.mac-factor summary::-webkit-details-marker { display: none; }
+
+.mac-factor-name { font-size: 13px; color: var(--text); }
+
+.mac-factor-state {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text2);
+}
+
+.mac-factor-bull .mac-factor-state { color: var(--green); }
+.mac-factor-bear .mac-factor-state { color: var(--red); }
+
+.mac-factor-carried {
+  padding: 2px 7px;
+  background: var(--amber-bg);
+  border-radius: var(--radius-pill);
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--amber);
+}
+
+.mac-factor-note,
+.mac-factor-flip {
+  margin: 0;
+  padding: 0 12px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text2);
+}
+
+.mac-factor-flip { border-top: 1px solid var(--border); padding-top: 10px; }
+.mac-factor-flip strong { color: var(--text3); font-weight: 400; }
+
+.mac-factor-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0 12px 10px;
+}
+
+.mac-factor-inputs div { display: flex; justify-content: space-between; gap: 8px; }
+.mac-factor-inputs dt { font-size: 11px; color: var(--text3); }
+.mac-factor-inputs dd { margin: 0; word-break: normal; }
+
+/* ---- mac: headwind / tailwind / watch ---- */
+.mac-wind-lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.mac-winds {
   padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+}
+
+.mac-winds h4 {
+  margin: 0 0 8px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--text3);
 }
 
-.scan-summary b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.mac-winds ul { margin: 0; padding-left: 16px; }
+.mac-winds li { margin-bottom: 6px; font-size: 12px; line-height: 1.5; color: var(--text2); }
+.mac-winds-bear { border-left: 3px solid var(--red); }
+.mac-winds-bull { border-left: 3px solid var(--green); }
+.mac-winds-watch { border-left: 3px solid var(--blue); }
 
-.scan-block { margin-top: 10px; }
-
-.scan-block summary {
-  padding: 8px 2px;
-  cursor: pointer;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text3);
-}
-
-.scan-block summary:hover { color: var(--text); }
-
-.scan-row {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 8px;
+/* ---- mac: live tells ---- */
+.mac-tells {
+  padding: 12px 14px;
+  margin-top: 18px;
   background: var(--surface);
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
 }
 
-.scan-row-error { border-color: var(--red-dim); }
+.mac-tells h4 {
+  margin: 0 0 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text3);
+}
 
-.scan-head {
-  display: flex;
+.mac-tells p { margin: 0 0 8px; font-size: 12px; }
+.mac-tells ul { margin: 0; padding-left: 16px; }
+.mac-tells li { margin-bottom: 4px; font-size: 12px; color: var(--text2); }
+.mac-tells strong { color: var(--text); font-weight: 400; }
+
+/* ---- mac: history strip ---- */
+.mac-history-row {
+  display: grid;
+  grid-template-columns: 86px 1fr 62px 110px auto;
   align-items: center;
   gap: 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.mac-history-row:last-child { border-bottom: none; }
+
+.mac-history-bar {
+  display: block;
+  height: 6px;
+  background: var(--red-bg);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.mac-history-fill { display: block; height: 100%; background: var(--text3); }
+.mac-history-bull { background: var(--green); }
+.mac-history-bear { background: var(--red); }
+
+.mac-history-label { color: var(--text2); }
+
+@media (max-width: 720px) {
+  .mac-history-row { grid-template-columns: 80px 1fr 56px; }
+  .mac-history-label,
+  .mac-history-row .muted { display: none; }
+}
+
+/* ---- mac: day type and events ---- */
+.mac-day {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.mac-day-head { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.mac-day h4 {
+  margin: 14px 0 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text3);
+}
+
+.mac-day-list { margin: 0; padding-left: 16px; }
+
+.mac-day-list li {
+  display: flex;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: var(--text2);
 }
 
-.scan-path { font-family: var(--mono); font-size: 11px; color: var(--text); word-break: break-all; }
-.scan-meta { font-size: 11px; color: var(--text3); margin: 4px 0 0; }
-.scan-meta em { color: var(--text); font-style: normal; }
+.mac-tag-day { border-color: var(--blue); color: var(--blue); }
+.mac-tag-tier1 { border-color: var(--red-dim); color: var(--red); }
+.mac-tag-tier2 { border-color: var(--amber); color: var(--amber); }
 
-.scan-patch {
-  margin: 0;
+/*
+ * The horizon warning is the one piece of chrome that must not be quiet. A
+ * two-session event list that does not say it is two sessions reads exactly
+ * like a clear week.
+ */
+.mac-horizon {
+  margin: 10px 0 0;
   padding: 8px 10px;
-  background: var(--green-bg);
-  border: 1px solid var(--green-dim);
-  border-left: 2px solid var(--green);
-  border-radius: 6px;
-  font-family: var(--mono);
+  background: var(--amber-bg);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius);
   font-size: 11px;
-  line-height: 1.6;
-  color: var(--green);
-  white-space: pre-wrap;
-}
-
-.scan-warnings {
-  margin: 8px 0 0;
-  padding-left: 16px;
-  font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.5;
   color: var(--amber);
 }
 
-.level-t1 { color: var(--green); }
-.level-t2 { color: var(--amber); }
-.level-t3 { color: var(--red); }
+.mac-attribution {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.mac-attribution strong { color: var(--text2); font-weight: 400; }
+
+/* ---- mac: logging-phase notice ---- */
+.mac-logging {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: var(--amber-bg);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--amber);
+}
+
+/* ---- Reggie: validation ---- */
+.val-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+
+.val-verdict-title { color: var(--text); min-width: 220px; }
+
+.val-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+}
+
+.val-block {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.val-block h4 {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text3);
+}
+
+.val-block p { font-size: 12px; line-height: 1.5; }
+
+.val-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+.val-table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border2);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text3);
+  text-align: right;
+}
+
+.val-table th:first-child, .val-table td:first-child { text-align: left; }
+.val-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; }
+.val-table tr:last-child td { border-bottom: none; }
+
+/*
+ * A bucket below the minimum is dimmed rather than hidden. An empty row and a
+ * missing row say very different things about why a test is inconclusive.
+ */
+.val-thin td { color: var(--text3); }
 
 /* ---- Office ---- */
 .office-stage {

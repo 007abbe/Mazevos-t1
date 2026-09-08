@@ -117,8 +117,8 @@ export function appendFrontmatter(text, patch) {
 }
 
 /**
- * Reasons to look at a note before letting Gnosis write to it. Surfaced per
- * row in the sync preview; none of these block a write on their own.
+ * Reasons to look at a note before writing frontmatter into it. None of these
+ * block a write on their own — they exist for a preview to surface.
  */
 export function frontmatterWarnings(text) {
   const source = String(text ?? '')

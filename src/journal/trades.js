@@ -1,9 +1,10 @@
 import { supabase } from '../lib/supabase.js'
 import { getUser } from '../lib/auth.js'
-import { fromRow, toRow, stampNow, uid } from './mapping.js'
+import { fromRow, toRow, stampNow, stampRegime, uid } from './mapping.js'
 import { listAccounts } from './accounts.js'
 import { backtestAccountIds } from '../domain/account-vocab.js'
 import { isRealTrade } from '../domain/veto-vocab.js'
+import { snapshotFor } from '../agents/reggie/mac/snapshots.js'
 
 /**
  * Cloud-first: Supabase is the only store. There is no localStorage mirror and
@@ -102,11 +103,33 @@ export async function getTrade(id) {
  *
  * Returns the saved trade as stored.
  */
+/**
+ * The mac snapshot for the trade's own session, or null.
+ *
+ * Never throws and never blocks a save. Logging a trade is the one thing in
+ * this app that must always work — a missing regime stamp costs Phase 4 one
+ * row, whereas a failed save costs the trade. An already-stamped trade skips
+ * the read entirely, so editing an old trade is not a round trip.
+ */
+async function todaysRegime(trade) {
+  if (trade.regime_bias != null) return null
+
+  const date = trade.date?.slice(0, 10)
+  if (!date) return null
+
+  try {
+    return await snapshotFor(date)
+  } catch {
+    return null
+  }
+}
+
 export async function upsertTrade(trade) {
   const user = await getUser()
   if (!user) throw new Error('Not signed in')
 
-  const row = toRow(stampNow({ ...trade, id: trade.id || uid() }), user.id)
+  const stamped = stampRegime({ ...trade, id: trade.id || uid() }, await todaysRegime(trade))
+  const row = toRow(stampNow(stamped), user.id)
 
   const { data, error } = await supabase
     .from('trades')

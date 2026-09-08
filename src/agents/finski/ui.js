@@ -1,5 +1,7 @@
 import { esc, explainFailure } from '../../lib/ui-text.js'
 import { listTrades } from '../../journal/trades.js'
+import { etDate } from '../../domain/et-session.js'
+import { snapshotFor } from '../reggie/mac/snapshots.js'
 import { fetchCalendar } from './calendar.js'
 import { requestBrief } from './client.js'
 import { listBriefs, saveBrief } from './briefs.js'
@@ -82,6 +84,22 @@ const template = () => `
   <div data-role="history"><p class="muted">Loading…</p></div>
 `
 
+/**
+ * Today's mac snapshot, or null.
+ *
+ * A failure here must never fail the brief. Finski's job is to be on screen
+ * before the open; the macro section is an addition to it, not a prerequisite,
+ * so a missing table, an unrun mac or a dropped connection all resolve to "no
+ * MACRO section" rather than to no brief.
+ */
+async function macroSnapshot() {
+  try {
+    return await snapshotFor(etDate(Date.now()))
+  } catch {
+    return null
+  }
+}
+
 /** Renders Finski into `el`. */
 export function renderFinski(el) {
   el.innerHTML = template()
@@ -127,6 +145,11 @@ export function renderFinski(el) {
       // Trades feed the regime-persistence rule: yesterday's tagged day type.
       const trades = await listTrades({ limit: 100 })
 
+      // Read-only: Finski never computes a snapshot, it quotes the one mac
+      // stored. If mac has not run today the MACRO section is simply absent —
+      // a brief without it is better than a brief that made one up.
+      const macro = await macroSnapshot()
+
       const result = await generateBrief(
         {
           vix,
@@ -137,6 +160,7 @@ export function renderFinski(el) {
             priorClose: numOrNull(el.querySelector('#fin-prior-close')),
           },
           trades,
+          macro,
           now: Date.now(),
         },
         { fetchCalendar, requestBrief, saveBrief, onProgress: setStatus }
@@ -149,6 +173,7 @@ export function renderFinski(el) {
         [
           result.stale ? '⚠ calendar from an expired cache' : '',
           !result.stale && result.fromCache ? 'calendar from cache' : '',
+          result.macro ? '' : 'no macro snapshot — run mac in Reggie',
           result.truncated ? '⚠ brief was cut short' : '',
           result.saved ? '' : '⚠ not saved to history',
         ]

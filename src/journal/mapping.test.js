@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { toRow, fromRow, stampNow, uid, toDatetimeLocal, isValidTradeDate } from './mapping.js'
+import {
+  toRow, fromRow, stampNow, stampRegime, uid, toDatetimeLocal, isValidTradeDate,
+} from './mapping.js'
 import {
   TYPES, STATUSES, MODELS, DEFAULT_MODEL, SETUP_TYPES, MM_SETUPS, BANDS, TARGETS,
   REGIMES, GAMMA_REGIMES, BE_REASONS, DAY_TYPES,
@@ -53,6 +55,10 @@ const dbRow = {
   mech_stop: '19845.50',
   mech_target: '19960.00',
   mech_exit: '19943.25',
+  regime_bias: 'leaning_bear',
+  regime_conviction: 'medium',
+  vol_regime: 'elevated',
+  macro_day_type: 'tier1_event',
   updated_at: 1753363800000,
 }
 
@@ -105,6 +111,7 @@ test('round-trip covers the full column set — no field silently dropped', () =
     'news_window', 'rule_broken', 'account_id', 'kind', 'veto_outcome',
     'conviction', 'mech_trigger', 'discretionary_act', 'mech_counterfactual_r',
     'mech_entry', 'mech_stop', 'mech_target', 'mech_exit',
+    'regime_bias', 'regime_conviction', 'vol_regime', 'macro_day_type',
   ]
   assert.deepEqual(Object.keys(toRow(fromRow(dbRow), USER)).sort(), [...COLUMNS].sort())
 })
@@ -318,4 +325,53 @@ test('the sample row only uses valid vocabulary values', () => {
   assert.ok(BE_REASONS.includes(t.be_reason))
   assert.ok(DAY_TYPES.includes(t.day_type))
   assert.ok(t.rule_broken.every((r) => RULE_BROKEN_VALUES.includes(r)))
+})
+
+/* ------------------------------------------------------- macro stamping ---- */
+
+const SNAPSHOT = {
+  date: '2026-07-24',
+  l1: { bar: { label: 'leaning_bear' }, conviction: 'medium' },
+  l2: { vol_regime: 'elevated', day_type: 'tier1_event' },
+}
+
+test('stampRegime copies the regime onto a trade from the same session', () => {
+  const stamped = stampRegime({ date: '2026-07-24T14:30' }, SNAPSHOT)
+
+  assert.equal(stamped.regime_bias, 'leaning_bear')
+  assert.equal(stamped.regime_conviction, 'medium')
+  assert.equal(stamped.vol_regime, 'elevated')
+  assert.equal(stamped.macro_day_type, 'tier1_event')
+})
+
+test('stampRegime never restamps a trade that already carries one', () => {
+  const existing = { date: '2026-07-24T14:30', regime_bias: 'bull', vol_regime: 'calm' }
+  const stamped = stampRegime(existing, SNAPSHOT)
+
+  assert.equal(stamped.regime_bias, 'bull', 'editing a trade must not rewrite its history')
+  assert.equal(stamped.vol_regime, 'calm')
+})
+
+test('stampRegime refuses a snapshot from a different session', () => {
+  // Editing last Tuesday's trade today must not stamp it with today's regime.
+  const stamped = stampRegime({ date: '2026-07-21T14:30' }, SNAPSHOT)
+
+  assert.equal(stamped.regime_bias, undefined)
+})
+
+test('stampRegime is a no-op without a snapshot', () => {
+  const trade = { date: '2026-07-24T14:30' }
+
+  assert.equal(stampRegime(trade, null), trade)
+  assert.equal(stampRegime(trade, {}), trade)
+  assert.equal(stampRegime(trade, { l1: {} }), trade)
+})
+
+test('a trade logged before mac keeps null across all four columns', () => {
+  const row = toRow(stampNow({ id: 'x', date: '2026-07-24T14:30' }), USER)
+
+  assert.equal(row.regime_bias, null)
+  assert.equal(row.regime_conviction, null)
+  assert.equal(row.vol_regime, null)
+  assert.equal(row.macro_day_type, null)
 })

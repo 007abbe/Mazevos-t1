@@ -169,7 +169,42 @@ export function toRow(t, userId) {
     mech_stop: t.mech_stop ?? null,
     mech_target: t.mech_target ?? null,
     mech_exit: t.mech_exit ?? null,
+    // The mac regime as it stood when the trade was logged. Null means the
+    // trade predates mac — a real state, distinct from any regime label, and
+    // the reason nothing here is backfilled. See `stampRegime`.
+    regime_bias: t.regime_bias ?? null,
+    regime_conviction: t.regime_conviction ?? null,
+    vol_regime: t.vol_regime ?? null,
+    macro_day_type: t.macro_day_type ?? null,
     updated_at: assertEpochMs(t.updatedAt ?? Date.now()),
+  }
+}
+
+/**
+ * Copies today's macro regime onto a trade about to be written.
+ *
+ * Only ever fills blanks. Editing a trade from last Tuesday must not restamp it
+ * with today's regime — the column records the regime the trade was *taken*
+ * under, and overwriting that would quietly rewrite the history Phase 4 is
+ * meant to measure. A trade logged before mac ran keeps its nulls forever,
+ * which is the honest answer.
+ *
+ * @param {object} trade
+ * @param {object|null} snapshot today's mac snapshot
+ */
+export function stampRegime(trade, snapshot) {
+  if (!snapshot?.l1?.bar) return trade
+  if (trade.regime_bias != null) return trade
+
+  // A snapshot from a different session describes a different day.
+  if (snapshot.date !== trade.date?.slice(0, 10)) return trade
+
+  return {
+    ...trade,
+    regime_bias: snapshot.l1.bar.label,
+    regime_conviction: snapshot.l1.conviction,
+    vol_regime: snapshot.l2?.vol_regime ?? null,
+    macro_day_type: snapshot.l2?.day_type ?? null,
   }
 }
 
@@ -220,6 +255,10 @@ export function fromRow(r) {
     mech_stop: r.mech_stop == null ? null : Number(r.mech_stop),
     mech_target: r.mech_target == null ? null : Number(r.mech_target),
     mech_exit: r.mech_exit == null ? null : Number(r.mech_exit),
+    regime_bias: r.regime_bias || null,
+    regime_conviction: r.regime_conviction || null,
+    vol_regime: r.vol_regime || null,
+    macro_day_type: r.macro_day_type || null,
     updatedAt: Number(r.updated_at) || 0,
   }
 }
