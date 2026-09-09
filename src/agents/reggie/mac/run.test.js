@@ -126,14 +126,26 @@ test('yesterday’s snapshot is threaded into the hysteresis', async () => {
   assert.equal(snapshot.l1.factors.credit.state, -2, 'a carried state survives the round trip')
 })
 
-test('the ISM entry reaches the snapshot', async () => {
-  const { deps: d } = deps()
-  const { snapshot } = await runMac(
-    { pmiEntry: { value: 49.1, date: '2026-09-01' }, now: NOW },
-    d
-  )
+test('the harvested ISM print reaches the snapshot', async () => {
+  const { deps: d } = deps({
+    fetchIsmActuals: async () => [
+      { date: '2026-09-01', value: 49.1, source: 'forexfactory-actual' },
+    ],
+  })
+  const { snapshot } = await runMac({ now: NOW }, d)
 
   assert.equal(snapshot.l1.factors.growth.inputs.pmi, 49.1)
+  assert.equal(snapshot.l1.factors.growth.pmi_source, 'forexfactory-actual')
+})
+
+test('a failed ISM harvest does not stop the snapshot', async () => {
+  // `fetchIsmActuals` swallows its own errors, so the pipeline sees an empty
+  // list. F1 then falls back to whatever the feed's `previous` gave it, which
+  // is where mac was before the scraper existed.
+  const { deps: d } = deps({ fetchIsmActuals: async () => [] })
+  const { snapshot } = await runMac({ now: NOW }, d)
+
+  assert.ok(snapshot.l1.factors.growth)
 })
 
 test('failed series are reported, not silently dropped', async () => {

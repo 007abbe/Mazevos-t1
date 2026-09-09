@@ -5,6 +5,9 @@ import { SERIES } from './factors.js'
 import { FACTOR_KEYS } from './compose.js'
 import { SNAPSHOT_VERSION, buildSnapshot, dataHealth, isHealthy, resolvePmi } from './snapshot.js'
 
+/** One harvested print, the shape the Action writes. */
+const ACTUAL_SEP = { date: '2026-09-01', value: 49.1, source: 'forexfactory-actual' }
+
 const TODAY = '2026-09-08'
 
 const daily = (n, value, end = TODAY) => {
@@ -225,40 +228,104 @@ test('the vol regime feeds both the multiplier and the conviction notch', () => 
 })
 
 test('resolvePmi carries the last print forward and keeps a history', () => {
-  const first = resolvePmi(null, { value: 49.1, date: '2026-09-01' })
+  const first = resolvePmi(null, null, [ACTUAL_SEP])
   assert.equal(first.value, 49.1)
   assert.equal(first.history.length, 1)
 
   const prior = { l1: { factors: { growth: { pmi_history: first.history } } } }
 
-  // No new entry: the September print still stands.
-  const carried = resolvePmi(prior, null)
+  // Nothing new harvested: the September print still stands. This is the
+  // ordinary case — ISM prints monthly, so most days harvest nothing.
+  const carried = resolvePmi(prior, null, [])
   assert.equal(carried.value, 49.1)
   assert.equal(carried.date, '2026-09-01')
 
-  const next = resolvePmi(prior, { value: 51.4, date: '2026-10-01' })
+  const next = resolvePmi(prior, null, [
+    { date: '2026-10-01', value: 51.4, source: 'forexfactory-actual' },
+  ])
   assert.equal(next.value, 51.4)
   assert.equal(next.history.length, 2)
 })
 
 test('resolvePmi corrects a revision in place rather than double-counting it', () => {
-  const first = resolvePmi(null, { value: 49.1, date: '2026-09-01' })
+  const first = resolvePmi(null, null, [ACTUAL_SEP])
   const prior = { l1: { factors: { growth: { pmi_history: first.history } } } }
-  const revised = resolvePmi(prior, { value: 49.6, date: '2026-09-01' })
+  const revised = resolvePmi(prior, null, [
+    { date: '2026-09-01', value: 49.6, source: 'forexfactory-actual' },
+  ])
 
   assert.equal(revised.history.length, 1)
   assert.equal(revised.value, 49.6)
 })
 
+test('resolvePmi prefers a scraped actual to the one-month-old previous', () => {
+  // Both describe August. The scraped print is the release itself; the feed's
+  // `previous` is the same number seen secondhand and sometimes rounded.
+  const calendar = [
+    {
+      country: 'USD',
+      title: 'ISM Manufacturing PMI',
+      date: '2026-10-01T14:00:00Z',
+      previous: '54.5',
+      forecast: '53.0',
+    },
+  ]
+  const actuals = [{ date: '2026-08-01', value: 54.6, source: 'forexfactory-actual' }]
+
+  const pmi = resolvePmi(null, calendar, actuals)
+
+  assert.equal(pmi.value, 54.6)
+  assert.equal(pmi.date, '2026-08-01')
+  assert.equal(pmi.source, 'forexfactory-actual')
+})
+
+test('a hand-corrected value in the stored history outranks a later scrape', () => {
+  // The panel has no entry box any more, but the ranking still has a top tier:
+  // a value with no `source`. That is what a hand-edited `ism_pmi.json` entry
+  // becomes once it is merged, and it must not be silently overwritten the next
+  // time the scraper reads the same month.
+  const prior = {
+    l1: { factors: { growth: { pmi_history: [{ date: '2026-08-01', value: 54.9 }] } } },
+  }
+  const actuals = [{ date: '2026-08-01', value: 54.6, source: 'forexfactory-actual' }]
+
+  assert.equal(resolvePmi(prior, null, actuals).value, 54.9)
+})
+
+test('resolvePmi merges months the sources do not share', () => {
+  // The scrape covers recent months and the feed's `previous` covers an older
+  // one; F1 needs three prints for its average, so both have to survive.
+  const calendar = [
+    {
+      country: 'USD',
+      title: 'ISM Manufacturing PMI',
+      date: '2026-08-03T14:00:00Z',
+      previous: '53.1',
+    },
+  ]
+  const actuals = [
+    { date: '2026-07-01', value: 55.6, source: 'forexfactory-actual' },
+    { date: '2026-08-01', value: 54.6, source: 'forexfactory-actual' },
+  ]
+
+  const pmi = resolvePmi(null, calendar, actuals)
+
+  assert.deepEqual(
+    pmi.history.map((row) => row.date),
+    ['2026-06-01', '2026-07-01', '2026-08-01']
+  )
+  assert.equal(pmi.value, 54.6)
+})
+
 test('resolvePmi ignores an entry with no usable value', () => {
-  assert.deepEqual(resolvePmi(null, { value: NaN, date: '2026-09-01' }).history, [])
+  assert.deepEqual(resolvePmi(null, null, [{ value: NaN, date: '2026-09-01' }]).history, [])
   assert.deepEqual(resolvePmi(null, { value: 49, date: null }).history, [])
 })
 
 test('the PMI history lives inside the growth factor so one row carries it all', () => {
-  const snapshot = build({ pmiEntry: { value: 49.1, date: '2026-09-01' } })
+  const snapshot = build({ ismActuals: [ACTUAL_SEP] })
 
-  assert.deepEqual(snapshot.l1.factors.growth.pmi_history, [{ date: '2026-09-01', value: 49.1 }])
+  assert.deepEqual(snapshot.l1.factors.growth.pmi_history, [ACTUAL_SEP])
   assert.equal(snapshot.l1.factors.growth.inputs.pmi, 49.1)
 
   // The next day reads it back without the entry being typed again.

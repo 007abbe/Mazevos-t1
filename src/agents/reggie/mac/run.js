@@ -19,15 +19,24 @@ import { etDate } from '../../../domain/et-session.js'
  * unsaved snapshot means tomorrow's confirmation counters restart.
  *
  * @param {object} input
- * @param {{value: number, date: string}|null} [input.pmiEntry] manual ISM entry
  * @param {number} [input.now] epoch ms
  * @param {object} deps
  * @returns {Promise<{snapshot: object, failed: Record<string, string>,
  *   saved: boolean, saveError: Error|null, calendarError: Error|null}>}
  */
 export async function runMac(
-  { pmiEntry = null, now = Date.now() } = {},
-  { fetchSeries, fetchCalendar, priorSnapshot, saveSnapshot, onProgress = () => {} }
+  { now = Date.now() } = {},
+  {
+    fetchSeries,
+    fetchCalendar,
+    // Defaulted rather than required: a caller with no harvest is a supported
+    // state, not a mistake, and mac computed a full snapshot without one for
+    // its whole first version.
+    fetchIsmActuals = async () => [],
+    priorSnapshot,
+    saveSnapshot,
+    onProgress = () => {},
+  }
 ) {
   const today = etDate(now)
 
@@ -47,6 +56,11 @@ export async function runMac(
     calendarError = err
   }
 
+  // Harvested ISM prints, written by the Action. `fetchIsmActuals` never
+  // throws — a missing file just means F1 falls back to the feed's one-month-old
+  // `previous`, which is what mac did before the scraper existed.
+  const ismActuals = await fetchIsmActuals()
+
   onProgress('Reading yesterday…')
   const prior = await priorSnapshot(today)
 
@@ -54,8 +68,8 @@ export async function runMac(
   const snapshot = buildSnapshot({
     series,
     prior,
-    pmiEntry,
     calendar,
+    ismActuals,
     fetchErrors: failed,
     today,
     now,
@@ -71,5 +85,5 @@ export async function runMac(
     saveError = err
   }
 
-  return { snapshot, failed, saved, saveError, calendarError }
+  return { snapshot, failed, saved, saveError, calendarError, ismActuals }
 }

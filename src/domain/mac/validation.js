@@ -14,11 +14,15 @@
  * The two halves have very different data appetites, and keeping them apart is
  * the point of the file:
  *
- *   - **Bar calibration** needs no trades at all. One data point per session,
- *     from stored snapshots against NDX closes — the same `NASDAQ100` series F7
- *     already pulls. It fills whether or not you traded.
- *   - **Trade separation** needs enough fills *per bucket*, which is far slower,
- *     and `hostile` may take a year or a shock to populate at all.
+ * Bar calibration used to live here too — one point per session, snapshots
+ * against NDX closes, filling whether or not you traded. It is gone, and not
+ * because it was wrong: `scripts/backtest.mjs` now answers exactly that question
+ * over 2,582 point-in-time sessions instead of the sixty this could accumulate
+ * in three months. Keeping a slower, noisier copy of a settled question would
+ * only invite reading a thin sample as a result.
+ *
+ * What is left needs fills *per bucket*, which is far slower, and `hostile` may
+ * take a year or a shock to populate at all.
  *
  * Backtest rows never reach here. The caller passes live trades only: the whole
  * reason the Backtest scope exists is to keep unfilled ideas out of live
@@ -36,9 +40,6 @@ import { actualR, expectancy } from '../discretion.js'
  * `n` regardless, so a thin cell is visible rather than merely flagged.
  */
 export const MIN_BUCKET_N = 20
-
-/** Sessions needed before the calibration curve is worth refitting against. */
-export const MIN_CALIBRATION_SESSIONS = 60
 
 /**
  * mac is display-only until this flips.
@@ -60,91 +61,6 @@ export const LOGGING_NOTICE =
   'Logging phase — display only. Do not size off this: acting on the cap now ' +
   'contaminates the sample Phase 4 measures.'
 
-/* ------------------------------------------------------ bar calibration ---- */
-
-/**
- * Buckets for the calibration curve.
- *
- * Five, not the bar's seven labels: at 60–100 sessions, seven buckets leaves
- * cells holding four sessions, and a share-of-green computed on four sessions is
- * a coin flip wearing a percentage sign.
- */
-export const BAR_BUCKETS = [
-  { max: 35, label: '≤35', mid: 28 },
-  { max: 45, label: '36–45', mid: 40 },
-  { max: 54, label: '46–54', mid: 50 },
-  { max: 64, label: '55–64', mid: 60 },
-  { max: 100, label: '≥65', mid: 72 },
-]
-
-const bucketFor = (bullPct) => BAR_BUCKETS.find((b) => bullPct <= b.max) ?? BAR_BUCKETS[4]
-
-/**
- * Whether each session closed green, from a daily close series.
- *
- * Keyed by date so a snapshot can look itself up. The comparison is against the
- * previous *observation*, not the previous calendar day — a Monday is measured
- * against Friday, which is what a session return is.
- *
- * @param {Array<{date: string, value: number}>} closes ascending
- * @returns {Map<string, boolean>}
- */
-export function greenSessions(closes) {
-  const out = new Map()
-  for (let i = 1; i < closes.length; i += 1) {
-    out.set(closes[i].date, closes[i].value > closes[i - 1].value)
-  }
-  return out
-}
-
-/**
- * The calibration curve: what the bar predicted against what happened.
- *
- * A snapshot's `bull_pct` is computed pre-market for that session, so it is
- * scored against that same date's close — not the next one. Sessions with no
- * matching close (a holiday, a gap in the series) are dropped rather than
- * guessed at.
- *
- * @param {Array<{date: string, snapshot: object}>} rows stored snapshots
- * @param {Array<{date: string, value: number}>} closes NDX daily closes
- */
-export function barCalibration(rows, closes) {
-  const green = greenSessions(closes)
-
-  const buckets = BAR_BUCKETS.map((bucket) => ({
-    ...bucket,
-    n: 0,
-    green: 0,
-  }))
-
-  let matched = 0
-
-  for (const row of rows ?? []) {
-    const bullPct = row?.snapshot?.l1?.bar?.bull_pct
-    const date = row?.snapshot?.date ?? row?.date
-    if (!Number.isFinite(bullPct) || !green.has(date)) continue
-
-    matched += 1
-    const bucket = buckets.find((b) => b.label === bucketFor(bullPct).label)
-    bucket.n += 1
-    if (green.get(date)) bucket.green += 1
-  }
-
-  return {
-    sessions: matched,
-    enough: matched >= MIN_CALIBRATION_SESSIONS,
-    buckets: buckets.map((bucket) => ({
-      label: bucket.label,
-      predicted: bucket.mid,
-      n: bucket.n,
-      // Null, not zero: a bucket nothing landed in has no measured rate, and
-      // rendering 0% would read as "never green".
-      actual: bucket.n ? Math.round((bucket.green / bucket.n) * 100) : null,
-      enough: bucket.n >= MIN_BUCKET_N,
-    })),
-  }
-}
-
 /* ----------------------------------------------------- trade separation ---- */
 
 /** The bar's seven labels collapsed to three, for the same reason as above. */
@@ -159,6 +75,23 @@ export const BIAS_GROUPS = {
 }
 
 export const VOL_BUCKETS = ['calm', 'elevated', 'hostile']
+
+/**
+ * The standing environment, and the question this report exists to ask now.
+ *
+ * The directional bar was replayed over 2,582 point-in-time sessions and
+ * separated nothing — bull-minus-bear came to −2.3bps [−12.3, +8.0], with the
+ * two halves of the sample disagreeing in sign. That question is settled
+ * against the index, and no number of forward sessions here would settle it
+ * better.
+ *
+ * What the index cannot answer is whether the environment sorts *your setups*.
+ * You trade intraday SPM and MM; the replay measured close-to-close on NDX.
+ * Those can legitimately diverge, and the journal is the only place the
+ * difference can ever show up. That test needs trade count, not calendar days,
+ * so it starts now and fills as you trade.
+ */
+export const ENVIRONMENT_BUCKETS = ['headwind', 'mixed', 'tailwind']
 export const BIAS_BUCKETS = ['bear', 'neutral', 'bull']
 
 /** Win rate over rows that have a measurable R. */
@@ -187,18 +120,35 @@ export function bucketStats(trades) {
  * @param {string} model 'STDV' or 'MM'
  * @param {'vol_regime'|'regime_bias'} key
  */
+/**
+ * How each stamped column is bucketed, and how a trade's value is read from it.
+ *
+ * A table rather than a chain of conditionals, because the previous shape —
+ * "vol_regime, else treat it as the bar" — silently mis-bucketed the moment a
+ * third column arrived: environment values were matched against bear/neutral/
+ * bull, every trade fell outside all three, and the split rendered as three
+ * empty rows next to a non-zero total. Nothing threw.
+ *
+ * Adding a column here means adding a row here.
+ */
+const SPLITS = {
+  vol_regime: { buckets: VOL_BUCKETS, valueOf: (t) => t?.vol_regime ?? null },
+  regime_bias: { buckets: BIAS_BUCKETS, valueOf: (t) => BIAS_GROUPS[t?.regime_bias] ?? null },
+  macro_environment: {
+    buckets: ENVIRONMENT_BUCKETS,
+    valueOf: (t) => t?.macro_environment ?? null,
+  },
+}
+
 export function splitBy(trades, model, key) {
   const scoped = (trades ?? []).filter((t) => (t?.model ?? null) === model)
-  const buckets = key === 'vol_regime' ? VOL_BUCKETS : BIAS_BUCKETS
 
-  const rows = buckets.map((bucket) => ({
+  const split = SPLITS[key]
+  if (!split) throw new Error(`no bucket definition for ${key}`)
+
+  const rows = split.buckets.map((bucket) => ({
     bucket,
-    ...bucketStats(
-      scoped.filter((t) => {
-        const value = key === 'vol_regime' ? t?.vol_regime : BIAS_GROUPS[t?.regime_bias]
-        return value === bucket
-      })
-    ),
+    ...bucketStats(scoped.filter((t) => split.valueOf(t) === bucket)),
   }))
 
   // Trades logged before mac carry null across all four columns. Counting them
@@ -252,27 +202,34 @@ export function verdictFor(split, { low, high, margin = 0.2 } = {}) {
  *
  * @param {object} input
  * @param {object[]} input.trades live trades, already scoped by the caller
- * @param {Array<{date: string, snapshot: object}>} input.snapshots
- * @param {Array<{date: string, value: number}>} input.closes NDX daily closes
  */
-export function validationReport({ trades = [], snapshots = [], closes = [] }) {
+export function validationReport({ trades = [] }) {
   const stdvVol = splitBy(trades, 'STDV', 'vol_regime')
   const mmBias = splitBy(trades, 'MM', 'regime_bias')
+  const stdvEnv = splitBy(trades, 'STDV', 'macro_environment')
+  const mmEnv = splitBy(trades, 'MM', 'macro_environment')
 
   return {
     gating_enabled: GATING_ENABLED,
-    calibration: barCalibration(snapshots, closes),
     splits: {
       stdv_vol: stdvVol,
       stdv_bias: splitBy(trades, 'STDV', 'regime_bias'),
+      stdv_env: stdvEnv,
       mm_vol: splitBy(trades, 'MM', 'vol_regime'),
       mm_bias: mmBias,
+      mm_env: mmEnv,
     },
     verdicts: {
-      // The spec's two named tests: does hostile hurt STDV, and does the bar
-      // separate MM's continuation trades?
+      // The spec's original two: does hostile hurt STDV, and does the bar
+      // separate MM's continuation trades? The second is kept because the
+      // column is stamped anyway and measuring costs nothing — but mac no
+      // longer *asserts* it, which is the distinction that matters.
       stdv_vol: verdictFor(stdvVol, { low: 'hostile', high: 'calm' }),
       mm_bias: verdictFor(mmBias, { low: 'bear', high: 'bull' }),
+
+      // The new one, and the reason this report still exists.
+      stdv_env: verdictFor(stdvEnv, { low: 'headwind', high: 'tailwind' }),
+      mm_env: verdictFor(mmEnv, { low: 'headwind', high: 'tailwind' }),
     },
   }
 }
