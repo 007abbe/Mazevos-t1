@@ -78,7 +78,9 @@ test('the spec’s worked example reproduces exactly', () => {
   assert.equal(result.label, 'leaning_bear')
   assert.equal(
     result.sentence,
-    '38% bull / 62% bear — leaning bear. Shorts may have a tailwind; vol regime elevated, size capped.'
+    '38% bull / 62% bear — leaning bear, a majority of the six agree. ' +
+      'No measured directional edge; read it as description, not a call. ' +
+      'Vol regime elevated — wider range than normal, size capped.'
   )
 })
 
@@ -113,24 +115,36 @@ test('every label boundary lands on the right side', () => {
   assert.equal(at(80), 'strong_bull')
 })
 
-test('the neutral sentence replaces the template rather than filling it in', () => {
-  const result = bar({ bias: 0, convictionLevel: 'low', volRegime: 'calm' })
-
-  assert.equal(result.label, 'neutral')
-  assert.equal(
-    result.sentence,
-    'Neutral — no macro sponsorship either way; trade the microstructure, normal size.'
-  )
-  assert.doesNotMatch(result.sentence, /tailwind/)
+test('the sentence never claims a direction', () => {
+  // The claim the backtest killed. 2,582 point-in-time sessions, bull minus
+  // bear −2.3bps [−12.3, +8.0], the two halves disagreeing in sign. If this
+  // wording ever comes back it should come back with evidence attached.
+  for (const bias of [-6, -4, -1, 0, 1, 4, 6]) {
+    for (const conviction of ['low', 'medium', 'high']) {
+      const { sentence } = bar({ bias, convictionLevel: conviction, volRegime: 'calm' })
+      assert.doesNotMatch(sentence, /tailwind|favou?rs? (longs|shorts)|sponsorship/i, sentence)
+    }
+  }
 })
 
-test('the sentence names the side, the caveat and the vol cap', () => {
+test('the sentence describes the factors instead', () => {
   const bearish = bar({ bias: -4, convictionLevel: 'low', volRegime: 'calm' })
-  assert.match(bearish.sentence, /Shorts may have a tailwind, but conviction is low\./)
+  assert.match(bearish.sentence, /leaning bear/)
+  assert.match(bearish.sentence, /few of the six agree/)
+  assert.match(bearish.sentence, /No measured directional edge/)
   assert.doesNotMatch(bearish.sentence, /size capped/, 'calm caps nothing')
 
-  const bullish = bar({ bias: 4, convictionLevel: 'high', volRegime: 'hostile' })
-  assert.match(bullish.sentence, /Longs may have a tailwind; vol regime hostile, size capped\./)
+  const balanced = bar({ bias: 0, convictionLevel: 'low', volRegime: 'calm' })
+  assert.match(balanced.sentence, /factors close to balanced/)
+})
+
+test('the vol clause survives, because it is the part with evidence behind it', () => {
+  // Dispersion runs 91bps calm against 228bps hostile, monotone in and out of
+  // sample. The cap is a claim about range, and that one held.
+  const hostile = bar({ bias: 4, convictionLevel: 'high', volRegime: 'hostile' })
+
+  assert.match(hostile.sentence, /Vol regime hostile — wider range than normal, size capped\./)
+  assert.match(hostile.sentence, /most of the six agree/)
 })
 
 test('the quadrant reads factor states, not raw prints', () => {

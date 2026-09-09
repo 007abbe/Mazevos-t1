@@ -3,6 +3,7 @@ import { fetchCalendar } from '../finski/calendar.js'
 import { renderReggie, unmountReggie } from './ui.js'
 import { ensureTodaySnapshot } from './mac/auto.js'
 import { fetchSeries } from './mac/client.js'
+import { fetchIsmActuals } from './mac/actuals.js'
 import { priorSnapshot, saveSnapshot, snapshotFor } from './mac/snapshots.js'
 import { runMac } from './mac/run.js'
 
@@ -27,5 +28,5 @@ export const runDailyMac = () =>
   ensureTodaySnapshot({
     read: snapshotFor,
     compute: runMac,
-    deps: { fetchSeries, fetchCalendar, priorSnapshot, saveSnapshot },
+    deps: { fetchSeries, fetchCalendar, fetchIsmActuals, priorSnapshot, saveSnapshot },
   })

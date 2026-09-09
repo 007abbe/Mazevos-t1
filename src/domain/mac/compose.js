@@ -135,20 +135,48 @@ export function bar({ bias, convictionLevel, volRegime }) {
 
 /**
  * The one line under the bar. Deterministic — the LLM never writes this, it
- * only quotes it, which is what keeps Finski's no-direction rule intact while
- * still letting a directional read reach the brief.
+ * only quotes it.
+ *
+ * **It no longer makes a directional claim, because the claim did not hold.**
+ * The bar was replayed over 2,582 point-in-time sessions with
+ * `scripts/backtest.mjs`: bull-minus-bear came to −2.3bps [−12.3, +8.0], the
+ * in-sample and out-of-sample halves disagreed in sign, and no individual
+ * factor cleared either. "Longs may have a tailwind" was the sentence that
+ * asserted it, and there was never evidence behind it.
+ *
+ * What survives is what the number actually *is*: a summary of how far the six
+ * factor states lean and how many of them agree. That is a true statement about
+ * the factors and it stays. The leap from there to what NQ will do today is the
+ * part that was removed.
+ *
+ * The vol clause stays too, and is the one part with evidence: dispersion runs
+ * 91bps in `calm` against 228bps in `hostile`, monotone in and out of sample.
+ * The cap is a claim about range, never about direction.
  */
 function sentence({ bullPct, bearPct, label, convictionLevel, volRegime }) {
+  const vol =
+    volRegime === 'calm'
+      ? ''
+      : ` Vol regime ${volRegime} — wider range than normal, size capped.`
+
   if (label.key === 'neutral') {
-    return 'Neutral — no macro sponsorship either way; trade the microstructure, normal size.'
+    return `${bullPct}% bull / ${bearPct}% bear — factors close to balanced.${vol}`
   }
 
-  const side = bullPct > 54 ? 'Longs' : 'Shorts'
-  const caveat = convictionLevel === 'low' ? ', but conviction is low' : ''
-  const vol =
-    volRegime === 'calm' ? '' : `; vol regime ${volRegime}, size capped`
+  const agreement =
+    convictionLevel === 'low'
+      ? 'few of the six agree'
+      : convictionLevel === 'high'
+        ? 'most of the six agree'
+        : 'a majority of the six agree'
 
-  return `${bullPct}% bull / ${bearPct}% bear — ${label.text}. ${side} may have a tailwind${caveat}${vol}.`
+  // `label.text` is already phrased as a lean ("leaning bear"), so it is used as
+  // written rather than prefixed — "factors lean leaning bear" is what prefixing
+  // produces.
+  return (
+    `${bullPct}% bull / ${bearPct}% bear — ${label.text}, ${agreement}. ` +
+    `No measured directional edge; read it as description, not a call.${vol}`
+  )
 }
 
 /**

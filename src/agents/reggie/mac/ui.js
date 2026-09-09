@@ -3,7 +3,8 @@ import { FACTOR_KEYS, QUADRANT_LABELS } from '../../../domain/mac/compose.js'
 import { SERIES } from '../../../domain/mac/factors.js'
 import { macroParagraph } from '../../../domain/mac/narrative.js'
 import { GATING_ENABLED, LOGGING_NOTICE } from '../../../domain/mac/validation.js'
-import { ismSuggestion } from '../../../domain/mac/ism.js'
+import { harvestHealth } from '../../../domain/mac/ff-actuals.js'
+import { fetchIsmActuals } from './actuals.js'
 import { etDate } from '../../../domain/et-session.js'
 import { fetchCalendar } from '../../finski/calendar.js'
 import { fetchSeries } from './client.js'
@@ -301,7 +302,57 @@ const loggingNotice = () =>
     ? ''
     : `<p class="mac-logging">⚠ ${esc(LOGGING_NOTICE)}</p>`
 
+/**
+ * The environment card.
+ *
+ * Placed above the bar because it is the one part of mac with a mechanism
+ * behind it rather than a fitted threshold, and because the bar's directional
+ * claim did not survive validation. Two levels, the reasoning spelled out, and
+ * no forecast.
+ */
+const environmentBlock = (snapshot) => {
+  const env = snapshot.environment
+  if (!env) return ''
+
+  const tone =
+    env.standing === 'headwind' ? 'bear' : env.standing === 'tailwind' ? 'bull' : 'flat'
+
+  const real = env.rates.level == null ? '—' : `${env.rates.level.toFixed(2)}%`
+  const change =
+    env.liquidity.change_bn == null
+      ? '—'
+      : `${env.liquidity.change_bn >= 0 ? '+' : '−'}$${Math.abs(Math.round(env.liquidity.change_bn))}bn`
+  const level =
+    env.liquidity.level_bn == null ? '—' : `$${(env.liquidity.level_bn / 1000).toFixed(2)}tn`
+
+  return `
+    <div class="mac-env mac-env-${esc(tone)}">
+      <div class="mac-env-head">
+        <h3 class="agent-section">Environment</h3>
+        <span class="mac-tag mac-tag-${esc(tone)}">${esc(env.standing_text)}</span>
+      </div>
+      <p class="mac-env-note">${esc(env.note)}</p>
+      <dl class="mac-factor-inputs">
+        <div><dt>10y real yield</dt><dd class="mono">${esc(real)} · ${esc(env.rates.stance ?? '—')}</dd></div>
+        <div><dt>net liquidity</dt><dd class="mono">${esc(level)} · ${esc(env.liquidity.stance ?? '—')}</dd></div>
+        <div><dt>13-week change</dt><dd class="mono">${esc(change)}</dd></div>
+      </dl>
+      <p class="muted">
+        Context, not a signal. These are the two channels macro reaches a
+        long-duration index through — the discount rate and the marginal bid. It
+        says what the conditions are; it does not forecast the session.
+        ${
+          env.stale?.length
+            ? `<strong>Held — ${esc(env.stale.join(', '))} stale.</strong>`
+            : ''
+        }
+      </p>
+    </div>
+  `
+}
+
 const snapshotView = (snapshot, failed) => `
+  ${environmentBlock(snapshot)}
   ${barBlock(snapshot)}
   ${loggingNotice()}
   ${healthBlock(snapshot, failed)}
@@ -331,25 +382,14 @@ const snapshotView = (snapshot, failed) => `
 
 const template = () => `
   <div class="agent-inputs">
-    <div class="grid">
-      <label>ISM manufacturing PMI
-        <input type="number" id="mac-pmi" step="0.1" placeholder="49.1">
-      </label>
-      <label>ISM release date
-        <input type="date" id="mac-pmi-date">
-      </label>
-    </div>
-
     <div class="agent-actions">
       <button type="button" data-act="run">Compute snapshot</button>
       <span class="muted" data-role="status"></span>
     </div>
 
     <p class="muted" data-role="ism-hint">
-      Everything except ISM comes from FRED automatically. ISM is not on FRED and has no
-      free API — type it in on release day (first business day of the month). mac also
-      harvests it from ForexFactory, one release behind, so leaving this blank costs you a
-      month of freshness rather than the factor. Leave both blank to recompute untouched.
+      ISM is harvested automatically — leave both blank. Fill them in only to correct a
+      harvested print or to enter one early.
     </p>
     <p class="err" data-role="error"></p>
   </div>
@@ -413,30 +453,40 @@ export function renderMac(el) {
   }
 
   /**
-   * Pre-fills the ISM box from the calendar's consensus.
+   * Says what the harvest has, so the box can be left alone.
    *
-   * A suggestion, never a value: the field is left for you to confirm or
-   * overtype, and the hint says plainly that it is a forecast. Writing the
-   * consensus straight into the history would be the exact failure the manual
-   * entry exists to prevent — F1 scoring growth on what was expected rather
-   * than what printed.
+   * The box used to be pre-filled with the consensus and framed as a monthly
+   * chore. It is neither now: the Action scrapes the real `actual` from
+   * ForexFactory's calendar page within hours of the release, so the only thing
+   * left to report is which print is in play — and, past the grace period,
+   * whether the harvest has stopped working.
+   *
+   * A forecast is never offered as a value. That was the failure the manual
+   * entry existed to prevent, and it would be a worse one now that nobody is
+   * expected to be checking.
    */
-  async function suggestIsm() {
-    try {
-      const { events } = await fetchCalendar()
-      const suggestion = ismSuggestion(events, etDate(Date.now()))
-      if (!suggestion) return
+  async function describeIsm() {
+    const hint = $('ism-hint')
 
-      const input = el.querySelector('#mac-pmi')
-      const dateInput = el.querySelector('#mac-pmi-date')
-      if (input.value || dateInput.value) return
+    const entries = await fetchIsmActuals()
+    const health = harvestHealth(entries, etDate(Date.now()))
 
-      input.placeholder = String(suggestion.value)
-      dateInput.value = suggestion.date
-      $('ism-hint').textContent = `ISM: ${suggestion.label}. Type the actual once it prints — the placeholder is only the forecast.`
-    } catch {
-      // No calendar is not an error here; the manual box works regardless.
+    if (health.stale) {
+      hint.className = 'err'
+      hint.textContent =
+        `ISM harvest is behind — newest print on file is ` +
+        `${health.latest ?? 'none'}, expected ${health.expected}. ` +
+        `F1 is running on stale growth data: check the "Fetch FF calendar" ` +
+        `Action, then fix public/data/ism_pmi.json if the scrape is broken.`
+      return
     }
+
+    const latest = entries.at(-1)
+    hint.className = 'muted'
+    hint.textContent = latest
+      ? `ISM ${latest.value} for ${latest.date.slice(0, 7)}, harvested automatically.`
+      : 'ISM harvest has not run yet — mac is falling back to the one-month-old ' +
+        'figure from the weekly feed.'
   }
 
   /** Shows the stored snapshot for today, if one was already computed. */
@@ -452,24 +502,14 @@ export function renderMac(el) {
   }
 
   async function run() {
-    const value = parseFloat(el.querySelector('#mac-pmi').value)
-    const date = el.querySelector('#mac-pmi-date').value
-
-    // A PMI without its release date cannot be placed in the history, and the
-    // three-month average is a function of the dates. Refuse rather than guess.
-    if (!Number.isNaN(value) && !date) {
-      setError('Give the ISM release date alongside the PMI value.')
-      return
-    }
-
     setError('')
     button.disabled = true
     button.textContent = 'Working…'
 
     try {
       const result = await runMac(
-        { pmiEntry: Number.isNaN(value) ? null : { value, date }, now: Date.now() },
-        { fetchSeries, fetchCalendar, priorSnapshot, saveSnapshot, onProgress: setStatus }
+        { now: Date.now() },
+        { fetchSeries, fetchCalendar, fetchIsmActuals, priorSnapshot, saveSnapshot, onProgress: setStatus }
       )
 
       $('snapshot').innerHTML = snapshotView(result.snapshot, result.failed)
@@ -503,5 +543,5 @@ export function renderMac(el) {
 
   loadToday()
   loadHistory()
-  suggestIsm()
+  describeIsm()
 }

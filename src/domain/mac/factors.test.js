@@ -346,14 +346,22 @@ test('F3 carries forward when the TIPS series is stale', () => {
 
 /* ------------------------------------------------------------------ F4 ---- */
 
-/** WALCL is in millions; TGA and RRP in billions. Values here are billions. */
+/**
+ * Arguments are billions; the fixture converts to FRED's own units.
+ *
+ * WALCL **and WTREGEN** are millions on FRED; only RRPONTSYD is billions. The
+ * first version of this fixture scaled WALCL and left TGA alone, which is
+ * exactly the mistake the production code made — so the test agreed with the
+ * bug and reported green while net liquidity came out a thousand times the
+ * Treasury's cash balance with the sign flipped.
+ */
 const liquiditySeries = ({ walclBn = ramp(7000, 7000), tgaBn = ramp(700, 700), rrpBn = ramp(300, 300) } = {}) => ({
   [SERIES.WALCL.id]: weekly(12, (i, n) => walclBn(i, n) * 1000),
-  [SERIES.WTREGEN.id]: weekly(12, tgaBn),
+  [SERIES.WTREGEN.id]: weekly(12, (i, n) => tgaBn(i, n) * 1000),
   [SERIES.RRPONTSYD.id]: weekly(12, rrpBn),
 })
 
-test('net liquidity reconciles WALCL millions against TGA and RRP billions', () => {
+test('net liquidity reconciles WALCL and TGA millions against RRP billions', () => {
   const series = liquiditySeries()
   const netLiq = netLiquiditySeries(
     series[SERIES.WALCL.id],
@@ -362,6 +370,21 @@ test('net liquidity reconciles WALCL millions against TGA and RRP billions', () 
   )
 
   assert.equal(netLiq[netLiq.length - 1].value, 7000 - 700 - 300)
+})
+
+test('net liquidity lands in the right order of magnitude for real FRED values', () => {
+  // The published numbers for 2026-09-02, straight off FRED. Net liquidity is
+  // about $5.8tn; the units bug produced −961,198bn, so an order-of-magnitude
+  // check is the cheapest possible guard against it coming back.
+  const netLiq = netLiquiditySeries(
+    [{ date: '2026-09-02', value: 6737204 }], // WALCL, millions
+    [{ date: '2026-09-02', value: 967935 }], // WTREGEN, millions
+    [{ date: '2026-09-02', value: 0.626 }] // RRPONTSYD, billions
+  )
+
+  const value = netLiq[0].value
+  assert.ok(value > 4000 && value < 9000, `net liquidity should be a few thousand bn, got ${value}`)
+  assert.equal(Math.round(value), 5769)
 })
 
 test('asOf takes the latest value on or before a date', () => {
@@ -407,7 +430,7 @@ test('F4 forces −2 on a TGA rebuild even while net liquidity reads positive', 
   let memory = f4Liquidity({ series, prior: null, today: TODAY }).memory
   const later = {
     [SERIES.WALCL.id]: weekly(13, (i, n) => (i < n - 4 ? 7000 : 7400) * 1000, '2026-09-15'),
-    [SERIES.WTREGEN.id]: weekly(13, (i, n) => (i < n - 4 ? 700 : 900), '2026-09-15'),
+    [SERIES.WTREGEN.id]: weekly(13, (i, n) => (i < n - 4 ? 700 : 900) * 1000, '2026-09-15'),
     [SERIES.RRPONTSYD.id]: weekly(13, () => 300, '2026-09-15'),
   }
   const result = f4Liquidity({ series: later, prior: memory, today: '2026-09-15' })
@@ -585,4 +608,79 @@ test('volEffect is the whole cost of a vol regime, in one place', () => {
   assert.deepEqual(volEffect('calm'), { size_cap: 1, spm_allowed: true, mm_preferred: false })
   assert.deepEqual(volEffect('elevated'), { size_cap: 0.75, spm_allowed: true, mm_preferred: true })
   assert.deepEqual(volEffect('hostile'), { size_cap: 0.5, spm_allowed: false, mm_preferred: true })
+})
+
+/* --------------------------------------------- F1 degradation and budgets -- */
+
+/** GDPNow last observed `age` days before TODAY, the way FRED actually dates it. */
+const agedGdpnow = (age, value = 2.4) => {
+  const date = new Date(Date.parse(`${TODAY}T00:00:00Z`) - age * 86400000)
+    .toISOString()
+    .slice(0, 10)
+  return [{ date, value }]
+}
+
+test('GDPNow is never fresh by its own observation date, so the budget must allow for it', () => {
+  // The regression that matters most. GDPNow's observation is dated the quarter
+  // it forecasts and the first estimate lands about a month in, so the youngest
+  // observation the series ever offers is around 25 days old. A budget under
+  // that is unsatisfiable, and the factor holding on it was silently pinned at
+  // zero for its entire life.
+  assert.ok(
+    SERIES.GDPNOW.budgetDays > 25,
+    'a budget at or under 25 days can never be met by GDPNow'
+  )
+
+  // Same error, same shape: a monthly print is dated the month it describes.
+  assert.ok(SERIES.CPILFESL.budgetDays > 37, 'core CPI is never younger than ~37 days')
+  assert.ok(SERIES.PCEPILFE.budgetDays > 49, 'core PCE is never younger than ~49 days')
+})
+
+test('a stale GDPNow costs its vote, not the whole factor', () => {
+  const series = {
+    ...growthSeries({ claims: ramp(260000, 220000) }),
+    [SERIES.GDPNOW.id]: agedGdpnow(SERIES.GDPNOW.budgetDays + 30),
+  }
+
+  const result = f1Growth({ series, prior: null, pmi: { value: 54, history: [] }, today: TODAY })
+
+  assert.equal(result.carried, false, 'the factor still computes')
+  assert.ok(result.stale.includes(SERIES.GDPNOW.id), 'and says the input was stale')
+  assert.match(result.note, /not voting/)
+})
+
+test('a fresh GDPNow does vote', () => {
+  const fresh = { ...growthSeries(), [SERIES.GDPNOW.id]: agedGdpnow(30, 2.4) }
+  const stale = { ...growthSeries(), [SERIES.GDPNOW.id]: agedGdpnow(400, 2.4) }
+  const pmi = { value: 54, history: [] }
+
+  // Above trend with PMI above 50 is two expanding votes → +1. With GDPNow out
+  // of the count there is only one, so the same inputs read 0.
+  assert.equal(f1Growth({ series: fresh, prior: null, pmi, today: TODAY }).state, 1)
+  assert.equal(f1Growth({ series: stale, prior: null, pmi, today: TODAY }).state, 0)
+})
+
+test('the boom extreme needs a GDPNow that is actually current', () => {
+  const pmi = { value: 60, history: [] }
+  const series = (age) => ({
+    ...growthSeries({ claims: ramp(230000, 230000) }),
+    [SERIES.GDPNOW.id]: agedGdpnow(age, 3.5),
+  })
+
+  assert.equal(f1Growth({ series: series(30), prior: null, pmi, today: TODAY }).state, 2)
+  assert.notEqual(
+    f1Growth({ series: series(400), prior: null, pmi, today: TODAY }).state,
+    2,
+    'a months-old nowcast must not license a +2'
+  )
+})
+
+test('claims are the backbone: without them the factor still holds', () => {
+  const prior = { state: -1, candidate: null, streak: 0 }
+  const series = { ...growthSeries(), [SERIES.ICSA.id]: [] }
+
+  const result = f1Growth({ series, prior, today: TODAY })
+
+  assert.equal(result.carried, true)
+  assert.equal(result.state, -1, "yesterday's state, not a fresh zero")
 })

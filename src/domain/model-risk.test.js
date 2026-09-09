@@ -4,8 +4,9 @@ import {
   computeModelRisk,
   yesterdayContext,
   PERSISTENT_DAY_TYPE,
-  VIX_HIGH,
-  VIX_ELEVATED_FLOOR,
+  VXN_HIGH,
+  VXN_ELEVATED_FLOOR,
+  VXN_SPIKE_PCT,
 } from './model-risk.js'
 import { DAY_TYPES } from './trade-vocab.js'
 
@@ -23,17 +24,17 @@ const event = (title, impact, iso, timeLabel = '08:30 ET / 14:30 CET') => ({
 })
 
 /** VIX values that trip nothing, so each test isolates one rule. */
-const QUIET_VIX = { now: 15, prev: 15 }
+const QUIET_VXN = { now: 15, prev: 15 }
 
 const risk = (overrides = {}) =>
-  computeModelRisk({ vix: QUIET_VIX, now: NOW, ...overrides })
+  computeModelRisk({ vxn: QUIET_VXN, now: NOW, ...overrides })
 
 test('LOW with a quiet tape and an empty calendar', () => {
   assert.deepEqual(risk(), { level: 'LOW', triggered: [] })
 })
 
 test('`now` is required — the rules never read the clock themselves', () => {
-  assert.throws(() => computeModelRisk({ vix: QUIET_VIX }), TypeError)
+  assert.throws(() => computeModelRisk({ vxn: QUIET_VXN }), TypeError)
 })
 
 // --- HIGH -----------------------------------------------------------------
@@ -71,23 +72,36 @@ test('a Medium-impact major print does not trip the unreleased rule', () => {
   assert.equal(result.level, 'LOW')
 })
 
-test(`VIX above ${VIX_HIGH} is HIGH, and ${VIX_HIGH} exactly is not`, () => {
-  assert.equal(risk({ vix: { now: 30, prev: 29.5 } }).level, 'HIGH')
+test(`VXN above ${VXN_HIGH} is HIGH, and ${VXN_HIGH} exactly is not`, () => {
+  // Written against the constants rather than against literals. These levels
+  // moved once already, when the rules changed from VIX to VXN, and a test
+  // holding a bare 28 would have gone on passing against the wrong index.
+  const above = VXN_HIGH + 1
+  assert.equal(risk({ vxn: { now: above, prev: above } }).level, 'HIGH')
 
-  const atThreshold = risk({ vix: { now: 28, prev: 28 } })
+  const atThreshold = risk({ vxn: { now: VXN_HIGH, prev: VXN_HIGH } })
   assert.equal(atThreshold.level, 'ELEVATED')
-  assert.deepEqual(atThreshold.triggered, ['VIX 28 in 20–28 band'])
+  assert.deepEqual(atThreshold.triggered, [
+    `VXN ${VXN_HIGH} in ${VXN_ELEVATED_FLOOR}–${VXN_HIGH} band`,
+  ])
 })
 
-test('a 15% day-over-day VIX jump is HIGH at the boundary', () => {
-  const result = risk({ vix: { now: 23, prev: 20 } })
-  assert.equal(result.level, 'HIGH')
-  assert.deepEqual(result.triggered, [
-    'VIX +15.0% d/d (≥15%)',
-    'VIX 23 in 20–28 band',
-  ])
+test(`a day-over-day VXN jump past ${VXN_SPIKE_PCT}% is HIGH`, () => {
+  // Deliberately not testing the exact boundary. A percentage derived from two
+  // rounded prices lands on 11.999999999999998 as often as on 12, and a test
+  // that pins the knife-edge fails on arithmetic rather than on behaviour.
+  const prev = VXN_ELEVATED_FLOOR
+  const clearly = prev * (1 + (VXN_SPIKE_PCT + 5) / 100)
 
-  assert.equal(risk({ vix: { now: 22.9, prev: 20 } }).level, 'ELEVATED')
+  const result = risk({ vxn: { now: clearly, prev } })
+  assert.equal(result.level, 'HIGH')
+  assert.ok(result.triggered.some((t) => t.startsWith('VXN +')))
+
+  // A drift well under the threshold is the level band alone, not a spike.
+  const drift = prev * (1 + (VXN_SPIKE_PCT - 5) / 100)
+  const quiet = risk({ vxn: { now: drift, prev } })
+  assert.equal(quiet.level, 'ELEVATED')
+  assert.ok(!quiet.triggered.some((t) => t.startsWith('VXN +')))
 })
 
 // --- ELEVATED -------------------------------------------------------------
@@ -258,10 +272,11 @@ test('the tier-one prints keep their HIGH path untouched', () => {
   }
 })
 
-test(`VIX in the ${VIX_ELEVATED_FLOOR}–${VIX_HIGH} band is ELEVATED`, () => {
-  assert.equal(risk({ vix: { now: 24, prev: 24 } }).level, 'ELEVATED')
-  assert.equal(risk({ vix: { now: 20, prev: 20 } }).level, 'ELEVATED')
-  assert.equal(risk({ vix: { now: 19.9, prev: 19.9 } }).level, 'LOW')
+test(`VXN in the ${VXN_ELEVATED_FLOOR}–${VXN_HIGH} band is ELEVATED`, () => {
+  const floor = VXN_ELEVATED_FLOOR
+  assert.equal(risk({ vxn: { now: floor, prev: floor } }).level, 'ELEVATED', 'inclusive')
+  assert.equal(risk({ vxn: { now: floor + 3, prev: floor + 3 } }).level, 'ELEVATED')
+  assert.equal(risk({ vxn: { now: floor - 0.1, prev: floor - 0.1 } }).level, 'LOW')
 })
 
 test('VVIX above 110 is ELEVATED, and is optional', () => {
@@ -312,7 +327,7 @@ test('an ELEVATED rule never downgrades an existing HIGH', () => {
       // Trips HIGH (unreleased) and ELEVATED (inside session) at once.
       event('CPI m/m', 'High', '2026-07-29T14:00:00Z', '10:00 ET / 16:00 CET'),
     ],
-    vix: { now: 24, prev: 24 },
+    vxn: { now: VXN_ELEVATED_FLOOR, prev: VXN_ELEVATED_FLOOR },
     vvix: 120,
     yesterday: { date: '2026-07-28', day_type: PERSISTENT_DAY_TYPE, regime: null },
   })
@@ -320,7 +335,7 @@ test('an ELEVATED rule never downgrades an existing HIGH', () => {
   assert.deepEqual(result.triggered, [
     'CPI m/m not yet released (10:00 ET / 16:00 CET)',
     'CPI m/m inside AM session (10:00 ET / 16:00 CET)',
-    'VIX 24 in 20–28 band',
+    `VXN ${VXN_ELEVATED_FLOOR} in ${VXN_ELEVATED_FLOOR}–${VXN_HIGH} band`,
     'VVIX 120 > 110',
     'Yesterday tagged Trend Day (regime persistence)',
   ])

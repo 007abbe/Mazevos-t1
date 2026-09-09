@@ -60,10 +60,38 @@ const needsDigestion = (event) =>
   (MAJOR_RELEASE.test(event.title) || SECOND_TIER_INFLATION.test(event.title)) &&
   event.impact === 'High'
 
-export const VIX_HIGH = 28
-export const VIX_ELEVATED_FLOOR = 20
-/** Day-over-day VIX change, in percent, that counts as a spike. */
-export const VIX_SPIKE_PCT = 15
+/**
+ * Volatility thresholds, on VXN rather than VIX.
+ *
+ * You trade NQ, and VXN is the Nasdaq-100's own volatility index — VIX is the
+ * S&P's. Reading S&P vol to size a Nasdaq trade works only while the two move
+ * together, which is exactly the assumption that fails on a tech-led drawdown.
+ *
+ * **The levels are not the VIX numbers reused.** VXN runs structurally higher:
+ * over 2012-2026 its median is 19.4 against VIX's 16.2, so a straight swap would
+ * have put an ordinary Tuesday inside the elevated band. Each threshold is set
+ * to the VXN level at the *same percentile* the VIX one sat at, which preserves
+ * how often the rule fires rather than the number it fires at:
+ *
+ *   VIX 20 → p75.0 → VXN 24.4 → 24
+ *   VIX 28 → p94.0 → VXN 33.4 → 33
+ *   VIX +15% d/d → p96.1 → VXN +12.3% → 12
+ *
+ * The spike rule needed rescaling too even though a percentage looks
+ * scale-free: a higher base makes the same percentage a rarer event, and VIX
+ * cleared 15% on 147 days where VXN managed only 90.
+ */
+export const VXN_HIGH = 33
+export const VXN_ELEVATED_FLOOR = 24
+/** Day-over-day VXN change, in percent, that counts as a spike. */
+export const VXN_SPIKE_PCT = 12
+
+/**
+ * VVIX has no Nasdaq counterpart, so it stays as it is.
+ *
+ * It measures the vol of VIX itself and is a read on the whole volatility
+ * complex rather than on one index, which is still worth having beside VXN.
+ */
 export const VVIX_ELEVATED = 110
 /** How long the tape needs to absorb a major release. */
 export const DIGESTION_MS = 30 * 60 * 1000
@@ -78,7 +106,7 @@ export const PERSISTENT_DAY_TYPE = 'Trend Day'
 /**
  * @param {object} input
  * @param {CalendarEvent[]} [input.events] today's USD High/Medium events
- * @param {{now: number|null, prev: number|null}} input.vix
+ * @param {{now: number|null, prev: number|null}} input.vxn
  * @param {number|null} [input.vvix]
  * @param {{date: string, day_type: string|null, regime: string|null}|null} [input.yesterday]
  * @param {number} input.now epoch ms
@@ -86,7 +114,7 @@ export const PERSISTENT_DAY_TYPE = 'Trend Day'
  */
 export function computeModelRisk({
   events = [],
-  vix,
+  vxn,
   vvix = null,
   yesterday = null,
   now,
@@ -104,8 +132,8 @@ export function computeModelRisk({
     if (RANK[candidate] > RANK[level]) level = candidate
   }
 
-  const vixNow = vix?.now ?? null
-  const vixPrev = vix?.prev ?? null
+  const vxnNow = vxn?.now ?? null
+  const vxnPrev = vxn?.prev ?? null
 
   // --- HIGH ---------------------------------------------------------------
 
@@ -125,14 +153,14 @@ export function computeModelRisk({
       bump('HIGH', `${e.title} not yet released (${e.timeLabel})`)
     )
 
-  if (vixNow != null && vixNow > VIX_HIGH) {
-    bump('HIGH', `VIX ${vixNow} > ${VIX_HIGH}`)
+  if (vxnNow != null && vxnNow > VXN_HIGH) {
+    bump('HIGH', `VXN ${vxnNow} > ${VXN_HIGH}`)
   }
 
-  if (vixNow != null && vixPrev != null) {
-    const change = ((vixNow - vixPrev) / vixPrev) * 100
-    if (change >= VIX_SPIKE_PCT) {
-      bump('HIGH', `VIX +${change.toFixed(1)}% d/d (≥${VIX_SPIKE_PCT}%)`)
+  if (vxnNow != null && vxnPrev != null) {
+    const change = ((vxnNow - vxnPrev) / vxnPrev) * 100
+    if (change >= VXN_SPIKE_PCT) {
+      bump('HIGH', `VXN +${change.toFixed(1)}% d/d (≥${VXN_SPIKE_PCT}%)`)
     }
   }
 
@@ -177,8 +205,8 @@ export function computeModelRisk({
       )
     )
 
-  if (vixNow != null && vixNow >= VIX_ELEVATED_FLOOR && vixNow <= VIX_HIGH) {
-    bump('ELEVATED', `VIX ${vixNow} in ${VIX_ELEVATED_FLOOR}–${VIX_HIGH} band`)
+  if (vxnNow != null && vxnNow >= VXN_ELEVATED_FLOOR && vxnNow <= VXN_HIGH) {
+    bump('ELEVATED', `VXN ${vxnNow} in ${VXN_ELEVATED_FLOOR}–${VXN_HIGH} band`)
   }
 
   if (vvix != null && vvix > VVIX_ELEVATED) {

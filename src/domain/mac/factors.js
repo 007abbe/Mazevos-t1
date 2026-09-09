@@ -48,12 +48,32 @@ import { carryForward, confirm, confirmOnRelease, memory } from './hysteresis.js
  * factor stops trusting it. The budgets are cadence plus slack for holidays and
  * for FRED's own publication lag — daily series post the next afternoon, the
  * H.4.1 lands Thursday, monthly prints land mid-month.
+ *
+ * **The budget is measured against the observation date, not the release date**,
+ * and for anything slower than daily those are far apart. A monthly print is
+ * dated the first of the month it *describes* and published four to eight weeks
+ * later, so its age on the day it lands is already most of the old budget. The
+ * first three of these were set as if the two dates were the same, and every one
+ * of them was unsatisfiable — GDPNow could not be fresh on any day in history,
+ * because the youngest observation it ever offers is 25 days old against what
+ * used to be a 21-day budget.
+ *
+ * The values below are measured, not guessed: they come from the observed age
+ * distribution over 2,583 replayed sessions (2016-2026), set near the 90th
+ * percentile so ordinary operation is never flagged and a genuine outage still
+ * is.
+ *
+ *   series      p50   p90   p99   max      budget
+ *   GDPNOW       77   115   163   207   →     120
+ *   CPILFESL     56    69    77   107   →      80
+ *   PCEPILFE     74    87   116   142   →     120
+ *   ICSA          9    11    25    60   →      14  (unchanged; correct already)
  */
 export const SERIES = Object.freeze({
-  GDPNOW: { id: 'GDPNOW', label: 'GDPNow', budgetDays: 21 },
+  GDPNOW: { id: 'GDPNOW', label: 'GDPNow', budgetDays: 120 },
   ICSA: { id: 'ICSA', label: 'initial claims', budgetDays: 14 },
-  CPILFESL: { id: 'CPILFESL', label: 'core CPI', budgetDays: 45 },
-  PCEPILFE: { id: 'PCEPILFE', label: 'core PCE', budgetDays: 60 },
+  CPILFESL: { id: 'CPILFESL', label: 'core CPI', budgetDays: 80 },
+  PCEPILFE: { id: 'PCEPILFE', label: 'core PCE', budgetDays: 120 },
   DFEDTARU: { id: 'DFEDTARU', label: 'fed funds upper', budgetDays: 7 },
   DGS2: { id: 'DGS2', label: '2Y', budgetDays: 7 },
   DGS10: { id: 'DGS10', label: '10Y', budgetDays: 7 },
@@ -134,10 +154,21 @@ function held(prior, { missing, stale }, inputs = {}) {
  * Growth: GDPNow against its 2.0% trend, ISM PMI against 50 and its own
  * 3-month average, and initial claims 4-week MA against the 13-week average.
  *
- * ISM is not on FRED and is not free anywhere reliable, so `pmi` is entered by
- * hand on release day and carried inside the snapshot from then on. Two of the
- * three inputs decide the state; the extremes need PMI, so with no PMI ever
- * entered the factor can still read ±1 but never ±2.
+ * ISM is not on FRED and is not free anywhere reliable, so `pmi` is harvested
+ * from ForexFactory and carried inside the snapshot from then on. Two of the
+ * three inputs decide the state; the extremes need PMI, so with no PMI the
+ * factor can still read ±1 but never ±2.
+ *
+ * **Claims are the backbone; the other two may drop out.** This factor used to
+ * hold at yesterday's state whenever *any* input was stale, and because GDPNow's
+ * observation is dated the quarter it forecasts rather than the day it is
+ * published, that condition was true on every single day — the factor sat at 0
+ * from the day it shipped and never voted on anything. The fix is the rule F2
+ * already used and documented: hold only when the input the factor cannot work
+ * without has gone, and let the others degrade to a missing vote.
+ *
+ * So a stale GDPNow costs its vote, not the factor, and it is reported as stale
+ * rather than swallowed.
  *
  * The claims vote is the only daily-updating input, and it is the one that
  * would make this factor wobble, so it carries its own three-week confirmation
@@ -159,9 +190,22 @@ export function f1Growth({ series, prior, pmi = { value: null, date: null, histo
   const claims13w = meanOfLast(claims, 13)
   const gdpnow = lastValue(series[SERIES.GDPNOW.id] ?? [])
 
-  if (!feed.ok || claims4w == null || claims13w == null) {
+  // Claims carry the factor. Without a usable 4-week and 13-week average there
+  // is no daily-updating input left and nothing to compute, so the state holds.
+  const claimsGone =
+    feed.missing.includes(SERIES.ICSA.id) || feed.stale.includes(SERIES.ICSA.id)
+
+  if (claimsGone || claims4w == null || claims13w == null) {
     return held(prior, feed, { gdpnow, claims_4w: rounded(claims4w, 0), pmi: pmi.value })
   }
+
+  // GDPNow votes only while it is current. Between quarters it can go months
+  // without a new observation, and a nowcast that old is not a nowcast — but it
+  // is also no reason to stop reading claims and ISM.
+  const gdpUsable =
+    gdpnow != null &&
+    !feed.missing.includes(SERIES.GDPNOW.id) &&
+    !feed.stale.includes(SERIES.GDPNOW.id)
 
   const before = memory(prior)
 
@@ -185,7 +229,7 @@ export function f1Growth({ series, prior, pmi = { value: null, date: null, histo
       }
 
   // GDPNow votes on level against the 2.0% trend the spec anchors to.
-  const gdpVote = gdpnow == null ? 0 : gdpnow > GDP_TREND ? 1 : gdpnow < GDP_TREND ? -1 : 0
+  const gdpVote = !gdpUsable ? 0 : gdpnow > GDP_TREND ? 1 : gdpnow < GDP_TREND ? -1 : 0
 
   // PMI votes only when level and momentum agree. Above 50 while rolling over
   // is a genuinely ambiguous reading, and forcing it into a vote is how a
@@ -204,7 +248,7 @@ export function f1Growth({ series, prior, pmi = { value: null, date: null, histo
 
   let candidate = 0
   if (pmi.value != null && pmi.value < PMI_RECESSION && claimsRising) candidate = -2
-  else if (pmi.value != null && pmi.value > PMI_BOOM && gdpnow != null && gdpnow > GDP_STRONG) candidate = 2
+  else if (pmi.value != null && pmi.value > PMI_BOOM && gdpUsable && gdpnow > GDP_STRONG) candidate = 2
   else if (expanding >= 2) candidate = 1
   else if (contracting >= 2) candidate = -1
 
@@ -225,7 +269,8 @@ export function f1Growth({ series, prior, pmi = { value: null, date: null, histo
       claims_13w: rounded(claims13w, 0),
     },
     note:
-      `Growth ${direction}: GDPNow ${num(gdpnow)}% vs ${GDP_TREND.toFixed(1)}% trend, ` +
+      `Growth ${direction}: GDPNow ${num(gdpnow)}%${gdpUsable ? '' : ' (stale, not voting)'} ` +
+      `vs ${GDP_TREND.toFixed(1)}% trend, ` +
       `${pmi.value == null ? 'PMI not entered' : `PMI ${num(pmi.value)}`}, ` +
       `claims 4wMA ${num(claims4w, 0)} vs 13w ${num(claims13w, 0)} ` +
       `(${claimsRising ? 'rising' : 'falling'}) → earnings expectations ${earnings}.`,
@@ -244,8 +289,10 @@ export function f1Growth({ series, prior, pmi = { value: null, date: null, histo
       claimsSeen: newClaims ? claimsDate : before.claimsSeen ?? claimsDate,
     },
     carried: false,
-    missing: pmi.value == null ? ['ISM_PMI'] : [],
-    stale: [],
+    // Propagated rather than dropped: a factor that computed on a degraded feed
+    // must say so, or `data_health` reports a clean read of partial inputs.
+    missing: [...feed.missing, ...(pmi.value == null ? ['ISM_PMI'] : [])],
+    stale: feed.stale,
   }
 }
 
@@ -439,6 +486,23 @@ export function f3Rates({ series, prior, today }) {
 
 export const NET_LIQ_MOVE_BN = 50
 export const TGA_REBUILD_BN = 150
+
+/**
+ * FRED publishes WALCL and WTREGEN in millions and RRPONTSYD in billions, and
+ * everything here is billions.
+ *
+ * This was wrong in the first version and wrong in a way that hid: WALCL was
+ * scaled and WTREGEN was not, so "net liquidity" came out around −961,000bn
+ * instead of +5,769bn. Because the error term is a thousand times the TGA, the
+ * factor was not reading net liquidity at all — it was reading the inverse of
+ * the Treasury's cash balance, amplified, with the balance sheet and the RRP
+ * rounded into irrelevance. The sign happened to be right, which is why nothing
+ * looked broken.
+ *
+ * Any new series added here needs its units checked against FRED's `units_short`
+ * rather than assumed from its neighbours.
+ */
+export const MILLIONS_TO_BN = 1 / 1000
 export const LIQUIDITY_CONFIRMATIONS = 2
 
 /**
@@ -472,9 +536,9 @@ export function f4Liquidity({ series, prior, today }) {
   }
 
   const nl4w = netLiq[netLiq.length - 1].value - netLiq[netLiq.length - 5].value
-  const tga4w = alignedChange(tga, netLiq, 4)
+  const tga4w = alignedChange(tga, netLiq, 4, MILLIONS_TO_BN)
   const rrp4w = alignedChange(rrp, netLiq, 4)
-  const walcl4w = alignedChange(walcl, netLiq, 4, 1 / 1000)
+  const walcl4w = alignedChange(walcl, netLiq, 4, MILLIONS_TO_BN)
 
   const before = memory(prior)
 
@@ -530,7 +594,10 @@ export function netLiquiditySeries(walcl, tga, rrp) {
       const t = asOf(tga, row.date)
       const r = asOf(rrp, row.date)
       if (t == null || r == null) return null
-      return { date: row.date, value: row.value / 1000 - t - r }
+      // WALCL and WTREGEN are both millions; RRPONTSYD is already billions.
+      // Everything downstream is billions, and the two that need scaling must
+      // both get it — see MILLIONS_TO_BN.
+      return { date: row.date, value: row.value * MILLIONS_TO_BN - t * MILLIONS_TO_BN - r }
     })
     .filter(Boolean)
 }

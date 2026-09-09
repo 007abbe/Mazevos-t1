@@ -1,0 +1,1211 @@
+{
+  "source": "forexfactory-calendar",
+  "entries": [
+    {
+      "date": "2009-12-01",
+      "value": 55.9,
+      "release_date": "2010-01-04",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-01-01",
+      "value": 58.4,
+      "release_date": "2010-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-02-01",
+      "value": 56.5,
+      "release_date": "2010-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-03-01",
+      "value": 59.6,
+      "release_date": "2010-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-04-01",
+      "value": 60.4,
+      "release_date": "2010-05-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-05-01",
+      "value": 59.7,
+      "release_date": "2010-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-06-01",
+      "value": 56.2,
+      "release_date": "2010-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-07-01",
+      "value": 55.5,
+      "release_date": "2010-08-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-08-01",
+      "value": 56.3,
+      "release_date": "2010-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-09-01",
+      "value": 54.4,
+      "release_date": "2010-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-10-01",
+      "value": 56.9,
+      "release_date": "2010-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-11-01",
+      "value": 56.6,
+      "release_date": "2010-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2010-12-01",
+      "value": 57,
+      "release_date": "2011-01-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-01-01",
+      "value": 60.8,
+      "release_date": "2011-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-02-01",
+      "value": 61.4,
+      "release_date": "2011-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-03-01",
+      "value": 61.2,
+      "release_date": "2011-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-04-01",
+      "value": 60.4,
+      "release_date": "2011-05-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-05-01",
+      "value": 53.5,
+      "release_date": "2011-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-06-01",
+      "value": 55.3,
+      "release_date": "2011-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-07-01",
+      "value": 50.9,
+      "release_date": "2011-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-08-01",
+      "value": 50.6,
+      "release_date": "2011-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-09-01",
+      "value": 51.6,
+      "release_date": "2011-10-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-10-01",
+      "value": 50.8,
+      "release_date": "2011-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-11-01",
+      "value": 52.7,
+      "release_date": "2011-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2011-12-01",
+      "value": 53.9,
+      "release_date": "2012-01-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-01-01",
+      "value": 54.1,
+      "release_date": "2012-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-02-01",
+      "value": 52.4,
+      "release_date": "2012-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-03-01",
+      "value": 53.4,
+      "release_date": "2012-04-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-04-01",
+      "value": 54.8,
+      "release_date": "2012-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-05-01",
+      "value": 53.5,
+      "release_date": "2012-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-06-01",
+      "value": 49.7,
+      "release_date": "2012-07-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-07-01",
+      "value": 49.8,
+      "release_date": "2012-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-08-01",
+      "value": 49.6,
+      "release_date": "2012-09-04",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-09-01",
+      "value": 51.5,
+      "release_date": "2012-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-10-01",
+      "value": 51.7,
+      "release_date": "2012-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-11-01",
+      "value": 49.5,
+      "release_date": "2012-12-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2012-12-01",
+      "value": 50.7,
+      "release_date": "2013-01-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-01-01",
+      "value": 53.1,
+      "release_date": "2013-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-02-01",
+      "value": 54.2,
+      "release_date": "2013-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-03-01",
+      "value": 51.3,
+      "release_date": "2013-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-04-01",
+      "value": 50.7,
+      "release_date": "2013-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-05-01",
+      "value": 49,
+      "release_date": "2013-06-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-06-01",
+      "value": 50.9,
+      "release_date": "2013-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-07-01",
+      "value": 55.4,
+      "release_date": "2013-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-08-01",
+      "value": 55.7,
+      "release_date": "2013-09-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-09-01",
+      "value": 56.2,
+      "release_date": "2013-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-10-01",
+      "value": 56.4,
+      "release_date": "2013-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-11-01",
+      "value": 57.3,
+      "release_date": "2013-12-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2013-12-01",
+      "value": 57,
+      "release_date": "2014-01-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-01-01",
+      "value": 51.3,
+      "release_date": "2014-02-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-02-01",
+      "value": 53.2,
+      "release_date": "2014-03-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-03-01",
+      "value": 53.7,
+      "release_date": "2014-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-04-01",
+      "value": 54.9,
+      "release_date": "2014-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-05-01",
+      "value": 55.4,
+      "release_date": "2014-06-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-06-01",
+      "value": 55.3,
+      "release_date": "2014-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-07-01",
+      "value": 57.1,
+      "release_date": "2014-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-08-01",
+      "value": 59,
+      "release_date": "2014-09-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-09-01",
+      "value": 56.6,
+      "release_date": "2014-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-10-01",
+      "value": 59,
+      "release_date": "2014-11-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-11-01",
+      "value": 58.7,
+      "release_date": "2014-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2014-12-01",
+      "value": 55.5,
+      "release_date": "2015-01-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-01-01",
+      "value": 53.5,
+      "release_date": "2015-02-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-02-01",
+      "value": 52.9,
+      "release_date": "2015-03-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-03-01",
+      "value": 51.5,
+      "release_date": "2015-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-04-01",
+      "value": 51.5,
+      "release_date": "2015-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-05-01",
+      "value": 52.8,
+      "release_date": "2015-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-06-01",
+      "value": 53.5,
+      "release_date": "2015-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-07-01",
+      "value": 52.7,
+      "release_date": "2015-08-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-08-01",
+      "value": 51.1,
+      "release_date": "2015-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-09-01",
+      "value": 50.2,
+      "release_date": "2015-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-10-01",
+      "value": 50.1,
+      "release_date": "2015-11-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-11-01",
+      "value": 48.6,
+      "release_date": "2015-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2015-12-01",
+      "value": 48.2,
+      "release_date": "2016-01-04",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-01-01",
+      "value": 48.2,
+      "release_date": "2016-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-02-01",
+      "value": 49.5,
+      "release_date": "2016-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-03-01",
+      "value": 51.8,
+      "release_date": "2016-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-04-01",
+      "value": 50.8,
+      "release_date": "2016-05-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-05-01",
+      "value": 51.3,
+      "release_date": "2016-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-06-01",
+      "value": 53.2,
+      "release_date": "2016-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-07-01",
+      "value": 52.6,
+      "release_date": "2016-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-08-01",
+      "value": 49.4,
+      "release_date": "2016-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-09-01",
+      "value": 51.5,
+      "release_date": "2016-10-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-10-01",
+      "value": 51.9,
+      "release_date": "2016-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-11-01",
+      "value": 53.2,
+      "release_date": "2016-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2016-12-01",
+      "value": 54.7,
+      "release_date": "2017-01-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-01-01",
+      "value": 56,
+      "release_date": "2017-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-02-01",
+      "value": 57.7,
+      "release_date": "2017-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-03-01",
+      "value": 57.2,
+      "release_date": "2017-04-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-04-01",
+      "value": 54.8,
+      "release_date": "2017-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-05-01",
+      "value": 54.9,
+      "release_date": "2017-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-06-01",
+      "value": 57.8,
+      "release_date": "2017-07-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-07-01",
+      "value": 56.3,
+      "release_date": "2017-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-08-01",
+      "value": 58.8,
+      "release_date": "2017-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-09-01",
+      "value": 60.8,
+      "release_date": "2017-10-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-10-01",
+      "value": 58.7,
+      "release_date": "2017-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-11-01",
+      "value": 58.2,
+      "release_date": "2017-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2017-12-01",
+      "value": 59.7,
+      "release_date": "2018-01-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-01-01",
+      "value": 59.1,
+      "release_date": "2018-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-02-01",
+      "value": 60.8,
+      "release_date": "2018-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-03-01",
+      "value": 59.3,
+      "release_date": "2018-04-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-04-01",
+      "value": 57.3,
+      "release_date": "2018-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-05-01",
+      "value": 58.7,
+      "release_date": "2018-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-06-01",
+      "value": 60.2,
+      "release_date": "2018-07-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-07-01",
+      "value": 58.1,
+      "release_date": "2018-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-08-01",
+      "value": 61.3,
+      "release_date": "2018-09-04",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-09-01",
+      "value": 59.8,
+      "release_date": "2018-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-10-01",
+      "value": 57.7,
+      "release_date": "2018-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-11-01",
+      "value": 59.3,
+      "release_date": "2018-12-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2018-12-01",
+      "value": 54.1,
+      "release_date": "2019-01-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-01-01",
+      "value": 56.6,
+      "release_date": "2019-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-02-01",
+      "value": 54.2,
+      "release_date": "2019-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-03-01",
+      "value": 55.3,
+      "release_date": "2019-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-04-01",
+      "value": 52.8,
+      "release_date": "2019-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-05-01",
+      "value": 52.1,
+      "release_date": "2019-06-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-06-01",
+      "value": 51.7,
+      "release_date": "2019-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-07-01",
+      "value": 51.2,
+      "release_date": "2019-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-08-01",
+      "value": 49.1,
+      "release_date": "2019-09-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-09-01",
+      "value": 47.8,
+      "release_date": "2019-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-10-01",
+      "value": 48.3,
+      "release_date": "2019-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-11-01",
+      "value": 48.1,
+      "release_date": "2019-12-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2019-12-01",
+      "value": 47.2,
+      "release_date": "2020-01-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-01-01",
+      "value": 50.9,
+      "release_date": "2020-02-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-02-01",
+      "value": 50.1,
+      "release_date": "2020-03-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-03-01",
+      "value": 49.1,
+      "release_date": "2020-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-04-01",
+      "value": 41.5,
+      "release_date": "2020-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-05-01",
+      "value": 43.1,
+      "release_date": "2020-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-06-01",
+      "value": 52.6,
+      "release_date": "2020-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-07-01",
+      "value": 54.2,
+      "release_date": "2020-08-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-08-01",
+      "value": 56,
+      "release_date": "2020-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-09-01",
+      "value": 55.4,
+      "release_date": "2020-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-10-01",
+      "value": 59.3,
+      "release_date": "2020-11-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-11-01",
+      "value": 57.5,
+      "release_date": "2020-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2020-12-01",
+      "value": 60.7,
+      "release_date": "2021-01-05",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-01-01",
+      "value": 58.7,
+      "release_date": "2021-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-02-01",
+      "value": 60.8,
+      "release_date": "2021-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-03-01",
+      "value": 64.7,
+      "release_date": "2021-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-04-01",
+      "value": 60.7,
+      "release_date": "2021-05-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-05-01",
+      "value": 61.2,
+      "release_date": "2021-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-06-01",
+      "value": 60.6,
+      "release_date": "2021-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-07-01",
+      "value": 59.5,
+      "release_date": "2021-08-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-08-01",
+      "value": 59.9,
+      "release_date": "2021-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-09-01",
+      "value": 61.1,
+      "release_date": "2021-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-10-01",
+      "value": 60.8,
+      "release_date": "2021-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-11-01",
+      "value": 61.1,
+      "release_date": "2021-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2021-12-01",
+      "value": 58.7,
+      "release_date": "2022-01-04",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-01-01",
+      "value": 57.6,
+      "release_date": "2022-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-02-01",
+      "value": 58.6,
+      "release_date": "2022-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-03-01",
+      "value": 57.1,
+      "release_date": "2022-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-04-01",
+      "value": 55.4,
+      "release_date": "2022-05-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-05-01",
+      "value": 56.1,
+      "release_date": "2022-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-06-01",
+      "value": 53,
+      "release_date": "2022-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-07-01",
+      "value": 52.8,
+      "release_date": "2022-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-08-01",
+      "value": 52.8,
+      "release_date": "2022-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-09-01",
+      "value": 50.9,
+      "release_date": "2022-10-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-10-01",
+      "value": 50.2,
+      "release_date": "2022-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-11-01",
+      "value": 49,
+      "release_date": "2022-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2022-12-01",
+      "value": 48.4,
+      "release_date": "2023-01-04",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-01-01",
+      "value": 47.4,
+      "release_date": "2023-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-02-01",
+      "value": 47.7,
+      "release_date": "2023-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-03-01",
+      "value": 46.3,
+      "release_date": "2023-04-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-04-01",
+      "value": 47.1,
+      "release_date": "2023-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-05-01",
+      "value": 46.9,
+      "release_date": "2023-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-06-01",
+      "value": 46,
+      "release_date": "2023-07-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-07-01",
+      "value": 46.4,
+      "release_date": "2023-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-08-01",
+      "value": 47.6,
+      "release_date": "2023-09-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-09-01",
+      "value": 49,
+      "release_date": "2023-10-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-10-01",
+      "value": 46.7,
+      "release_date": "2023-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-11-01",
+      "value": 46.7,
+      "release_date": "2023-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2023-12-01",
+      "value": 47.4,
+      "release_date": "2024-01-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-01-01",
+      "value": 49.1,
+      "release_date": "2024-02-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-02-01",
+      "value": 47.8,
+      "release_date": "2024-03-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-03-01",
+      "value": 50.3,
+      "release_date": "2024-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-04-01",
+      "value": 49.2,
+      "release_date": "2024-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-05-01",
+      "value": 48.7,
+      "release_date": "2024-06-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-06-01",
+      "value": 48.5,
+      "release_date": "2024-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-07-01",
+      "value": 46.8,
+      "release_date": "2024-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-08-01",
+      "value": 47.2,
+      "release_date": "2024-09-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-09-01",
+      "value": 47.2,
+      "release_date": "2024-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-10-01",
+      "value": 46.5,
+      "release_date": "2024-11-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-11-01",
+      "value": 48.4,
+      "release_date": "2024-12-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2024-12-01",
+      "value": 49.3,
+      "release_date": "2025-01-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-01-01",
+      "value": 50.9,
+      "release_date": "2025-02-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-02-01",
+      "value": 50.3,
+      "release_date": "2025-03-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-03-01",
+      "value": 49,
+      "release_date": "2025-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-04-01",
+      "value": 48.7,
+      "release_date": "2025-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-05-01",
+      "value": 48.5,
+      "release_date": "2025-06-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-06-01",
+      "value": 49,
+      "release_date": "2025-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-07-01",
+      "value": 48,
+      "release_date": "2025-08-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-08-01",
+      "value": 48.7,
+      "release_date": "2025-09-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-09-01",
+      "value": 49.1,
+      "release_date": "2025-10-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-10-01",
+      "value": 48.7,
+      "release_date": "2025-11-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-11-01",
+      "value": 48.2,
+      "release_date": "2025-12-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2025-12-01",
+      "value": 47.9,
+      "release_date": "2026-01-05",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-01-01",
+      "value": 52.6,
+      "release_date": "2026-02-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-02-01",
+      "value": 52.4,
+      "release_date": "2026-03-02",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-03-01",
+      "value": 52.7,
+      "release_date": "2026-04-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-04-01",
+      "value": 52.7,
+      "release_date": "2026-05-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-05-01",
+      "value": 54,
+      "release_date": "2026-06-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-06-01",
+      "value": 53.3,
+      "release_date": "2026-07-01",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-07-01",
+      "value": 55.6,
+      "release_date": "2026-08-03",
+      "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-08-01",
+      "value": 54.6,
+      "release_date": "2026-09-01",
+      "source": "forexfactory-actual"
+    }
+  ]
+}

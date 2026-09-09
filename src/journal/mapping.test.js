@@ -59,6 +59,9 @@ const dbRow = {
   regime_conviction: 'medium',
   vol_regime: 'elevated',
   macro_day_type: 'tier1_event',
+  macro_environment: 'headwind',
+  real_rate_stance: 'restrictive',
+  liquidity_stance: 'draining',
   updated_at: 1753363800000,
 }
 
@@ -112,6 +115,7 @@ test('round-trip covers the full column set — no field silently dropped', () =
     'conviction', 'mech_trigger', 'discretionary_act', 'mech_counterfactual_r',
     'mech_entry', 'mech_stop', 'mech_target', 'mech_exit',
     'regime_bias', 'regime_conviction', 'vol_regime', 'macro_day_type',
+    'macro_environment', 'real_rate_stance', 'liquidity_stance',
   ]
   assert.deepEqual(Object.keys(toRow(fromRow(dbRow), USER)).sort(), [...COLUMNS].sort())
 })
@@ -374,4 +378,54 @@ test('a trade logged before mac keeps null across all four columns', () => {
   assert.equal(row.regime_conviction, null)
   assert.equal(row.vol_regime, null)
   assert.equal(row.macro_day_type, null)
+})
+
+test('stampRegime records the environment beside the lean', () => {
+  const snapshot = {
+    date: '2026-09-08',
+    l1: { bar: { label: 'neutral' }, conviction: 'low' },
+    l2: { vol_regime: 'calm', day_type: 'normal' },
+    environment: {
+      standing: 'headwind',
+      rates: { stance: 'restrictive' },
+      liquidity: { stance: 'draining' },
+    },
+  }
+
+  const stamped = stampRegime({ date: '2026-09-08' }, snapshot)
+
+  assert.equal(stamped.macro_environment, 'headwind')
+  assert.equal(stamped.real_rate_stance, 'restrictive')
+  assert.equal(stamped.liquidity_stance, 'draining')
+})
+
+test('a snapshot with no environment stamps nulls rather than throwing', () => {
+  // Snapshots written before the environment existed are still in the table,
+  // and re-reading one must not take the log path down with it.
+  const snapshot = {
+    date: '2026-09-08',
+    l1: { bar: { label: 'neutral' }, conviction: 'low' },
+    l2: { vol_regime: 'calm' },
+  }
+
+  const stamped = stampRegime({ date: '2026-09-08' }, snapshot)
+
+  assert.equal(stamped.macro_environment, null)
+  assert.equal(stamped.regime_bias, 'neutral', 'the lean is still stamped')
+})
+
+test('the environment survives a round trip through the row mapping', () => {
+  const trade = {
+    date: '2026-09-08',
+    macro_environment: 'headwind',
+    real_rate_stance: 'restrictive',
+    liquidity_stance: 'draining',
+    updatedAt: 1,
+  }
+
+  const back = fromRow(toRow(trade, 'user-1'))
+
+  assert.equal(back.macro_environment, 'headwind')
+  assert.equal(back.real_rate_stance, 'restrictive')
+  assert.equal(back.liquidity_stance, 'draining')
 })

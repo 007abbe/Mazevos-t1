@@ -3,6 +3,7 @@ import { listTrades } from '../../journal/trades.js'
 import { etDate } from '../../domain/et-session.js'
 import { snapshotFor } from '../reggie/mac/snapshots.js'
 import { fetchCalendar } from './calendar.js'
+import { fetchVolQuotes } from './quotes.js'
 import { requestBrief } from './client.js'
 import { listBriefs, saveBrief } from './briefs.js'
 import { generateBrief } from './brief.js'
@@ -53,8 +54,8 @@ const historyRow = (row) => {
 const template = () => `
   <div class="agent-inputs">
     <div class="grid">
-      <label>VIX now<input type="number" id="fin-vix" step="0.1" placeholder="18.4"></label>
-      <label>VIX prev close<input type="number" id="fin-vix-prev" step="0.1" placeholder="17.9"></label>
+      <label>VXN now<input type="number" id="fin-vxn" step="0.1" placeholder="22.2"></label>
+      <label>VXN prev close<input type="number" id="fin-vxn-prev" step="0.1" placeholder="21.7"></label>
       <label>VVIX (optional)<input type="number" id="fin-vvix" step="0.1" placeholder="95"></label>
       <label>ON High (optional)<input type="number" id="fin-on-high" step="0.25" placeholder="price"></label>
       <label>ON Low (optional)<input type="number" id="fin-on-low" step="0.25" placeholder="price"></label>
@@ -66,8 +67,9 @@ const template = () => `
       <span class="muted" data-role="status"></span>
     </div>
 
+    <p class="muted" data-role="vix-source">Fetching VXN…</p>
     <p class="muted">
-      VIX from your platform or Google. The calendar fetches automatically and is cached for 60 minutes.
+      The calendar fetches automatically and is cached for 60 minutes.
       Model-risk is set by hardcoded rules — never by the model.
     </p>
     <p class="err" data-role="error"></p>
@@ -75,7 +77,7 @@ const template = () => `
 
   <h3 class="agent-section">Latest brief</h3>
   <div data-role="banner"></div>
-  <pre class="brief" data-role="brief">No brief yet. Fill in VIX and hit Generate.</pre>
+  <pre class="brief" data-role="brief">No brief yet. Fill in VXN and hit Generate.</pre>
 
   <h3 class="agent-section">
     Brief history
@@ -127,13 +129,13 @@ export function renderFinski(el) {
   }
 
   async function generate() {
-    const vix = {
-      now: numOrNull(el.querySelector('#fin-vix')),
-      prev: numOrNull(el.querySelector('#fin-vix-prev')),
+    const vxn = {
+      now: numOrNull(el.querySelector('#fin-vxn')),
+      prev: numOrNull(el.querySelector('#fin-vxn-prev')),
     }
 
-    if (vix.now == null || vix.prev == null) {
-      setError('Fill in VIX now and VIX previous close.')
+    if (vxn.now == null || vxn.prev == null) {
+      setError('Fill in VXN now and VXN previous close.')
       return
     }
 
@@ -152,7 +154,7 @@ export function renderFinski(el) {
 
       const result = await generateBrief(
         {
-          vix,
+          vxn,
           vvix: numOrNull(el.querySelector('#fin-vvix')),
           levels: {
             onHigh: numOrNull(el.querySelector('#fin-on-high')),
@@ -192,6 +194,45 @@ export function renderFinski(el) {
     }
   }
 
+  /**
+   * Fills VIX from the live quote, leaving the fields editable.
+   *
+   * Pre-filled, never locked. Finski refuses to run without a VIX, so a failed
+   * quote has to leave a box you can type into rather than block the brief —
+   * and a value you disagree with has to be correctable in the moment.
+   *
+   * Before 09:30 New York the index is not being disseminated, so "now" is
+   * openly reported as the previous close instead of being dressed up as live.
+   */
+  async function fillQuotes() {
+    const hint = $('vix-source')
+    const { vxn, vvix, failed } = await fetchVolQuotes()
+
+    if (failed || !vxn) {
+      hint.className = 'err'
+      hint.textContent = `VXN could not be fetched${failed ? ` — ${failed}` : ''}. Type it in.`
+      return
+    }
+
+    const set = (id, value) => {
+      const input = el.querySelector(id)
+      // Never overwrite something already typed: the fetch resolves after the
+      // panel is interactive, and clobbering a correction mid-keystroke is
+      // exactly the behaviour that makes an auto-filled field untrustworthy.
+      if (input && !input.value && value != null) input.value = String(value)
+    }
+
+    set('#fin-vxn', vxn.value)
+    set('#fin-vxn-prev', vxn.prev)
+    if (vvix?.value != null) set('#fin-vvix', vvix.value)
+
+    hint.className = 'muted'
+    hint.textContent =
+      `VXN ${vxn.value ?? '—'} (${vxn.source}, ${vxn.feed ?? 'unknown feed'}), previous close ${vxn.prev ?? '—'}` +
+      `${vxn.prev_date ? ` from ${vxn.prev_date}` : ''}` +
+      `${vvix?.value != null ? ` · VVIX ${vvix.value}` : ''}. Edit any of these if you disagree.`
+  }
+
   el.addEventListener('click', (event) => {
     const action = event.target.closest('[data-act]')?.dataset.act
     if (action === 'generate') generate()
@@ -199,4 +240,5 @@ export function renderFinski(el) {
   })
 
   loadHistory()
+  fillQuotes()
 }

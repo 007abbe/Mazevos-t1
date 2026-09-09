@@ -30,13 +30,13 @@ const CALENDAR = [
   },
 ]
 
-const QUIET_VIX = { now: 15, prev: 15 }
+const QUIET_VXN = { now: 15, prev: 15 }
 const NO_LEVELS = { onHigh: null, onLow: null, priorClose: null }
 
 const inputs = (overrides = {}) =>
   buildBriefInputs({
     calendar: CALENDAR,
-    vix: QUIET_VIX,
+    vxn: QUIET_VXN,
     levels: NO_LEVELS,
     now: NOW,
     ...overrides,
@@ -98,7 +98,7 @@ test('the stored row keeps both zones for reading a brief back later', () => {
     forecast: '0.3%',
     previous: '0.2%',
   })
-  assert.deepEqual(stored.vix, QUIET_VIX)
+  assert.deepEqual(stored.vxn, QUIET_VXN)
 })
 
 test('formatBrief dates the brief in New York time', () => {
@@ -162,7 +162,7 @@ test('generateBrief runs calendar → rules → prose → save', async () => {
   const { deps: d, saved, requested } = deps()
 
   const result = await generateBrief(
-    { vix: QUIET_VIX, levels: NO_LEVELS, now: NOW },
+    { vxn: QUIET_VXN, levels: NO_LEVELS, now: NOW },
     d
   )
 
@@ -179,7 +179,7 @@ test('generateBrief reports progress in order', async () => {
   const steps = []
   const { deps: d } = deps()
 
-  await generateBrief({ vix: QUIET_VIX, levels: NO_LEVELS, now: NOW }, {
+  await generateBrief({ vxn: QUIET_VXN, levels: NO_LEVELS, now: NOW }, {
     ...d,
     onProgress: (step) => steps.push(step),
   })
@@ -193,7 +193,7 @@ test('generateBrief surfaces a stale calendar without failing', async () => {
   })
 
   const result = await generateBrief(
-    { vix: QUIET_VIX, levels: NO_LEVELS, now: NOW },
+    { vxn: QUIET_VXN, levels: NO_LEVELS, now: NOW },
     d
   )
 
@@ -210,7 +210,7 @@ test('a failed save does not lose the brief', async () => {
   })
 
   const result = await generateBrief(
-    { vix: QUIET_VIX, levels: NO_LEVELS, now: NOW },
+    { vxn: QUIET_VXN, levels: NO_LEVELS, now: NOW },
     d
   )
 
@@ -227,7 +227,7 @@ test('a failed calendar fetch aborts before spending a request', async () => {
   })
 
   await assert.rejects(
-    generateBrief({ vix: QUIET_VIX, levels: NO_LEVELS, now: NOW }, d),
+    generateBrief({ vxn: QUIET_VXN, levels: NO_LEVELS, now: NOW }, d),
     /Calendar unavailable/
   )
   assert.equal(requested.length, 0)
@@ -239,7 +239,7 @@ test('a truncated response is flagged through to the caller', async () => {
   })
 
   const result = await generateBrief(
-    { vix: QUIET_VIX, levels: NO_LEVELS, now: NOW },
+    { vxn: QUIET_VXN, levels: NO_LEVELS, now: NOW },
     d
   )
 
@@ -335,7 +335,7 @@ test('generateBrief carries the snapshot into the brief, the row and the result'
   const { deps: d, saved, requested } = deps()
 
   const result = await generateBrief(
-    { vix: QUIET_VIX, levels: NO_LEVELS, macro: MACRO, now: NOW },
+    { vxn: QUIET_VXN, levels: NO_LEVELS, macro: MACRO, now: NOW },
     d
   )
 
@@ -348,7 +348,7 @@ test('generateBrief carries the snapshot into the brief, the row and the result'
 test('a brief generated without mac is unchanged and reports the absence', async () => {
   const { deps: d, saved } = deps()
 
-  const result = await generateBrief({ vix: QUIET_VIX, levels: NO_LEVELS, now: NOW }, d)
+  const result = await generateBrief({ vxn: QUIET_VXN, levels: NO_LEVELS, now: NOW }, d)
 
   assert.equal(result.macro, null)
   assert.doesNotMatch(result.brief, /MACRO/)

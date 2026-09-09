@@ -16,7 +16,7 @@ import { todayUsdEvents } from './calendar.js'
  *
  * @param {object} input
  * @param {Array<object>} input.calendar full weekly feed
- * @param {{now: number|null, prev: number|null}} input.vix
+ * @param {{now: number|null, prev: number|null}} input.vxn
  * @param {number|null} [input.vvix]
  * @param {{onHigh: number|null, onLow: number|null, priorClose: number|null}} [input.levels]
  * @param {Array<object>} [input.trades] for the regime-persistence rule
@@ -24,7 +24,7 @@ import { todayUsdEvents } from './calendar.js'
  */
 export function buildBriefInputs({
   calendar,
-  vix,
+  vxn,
   vvix = null,
   levels = { onHigh: null, onLow: null, priorClose: null },
   trades = [],
@@ -32,9 +32,9 @@ export function buildBriefInputs({
 }) {
   const events = todayUsdEvents(calendar, now)
   const yesterday = yesterdayContext(trades, now)
-  const risk = computeModelRisk({ events, vix, vvix, yesterday, now })
+  const risk = computeModelRisk({ events, vxn, vvix, yesterday, now })
 
-  return { events, yesterday, risk, vix, vvix, levels }
+  return { events, yesterday, risk, vxn, vvix, levels }
 }
 
 /**
@@ -49,11 +49,11 @@ export function buildBriefInputs({
  * has finished. Sending it here would put a bull/bear read in front of a model
  * told never to have one.
  */
-export function toFunctionPayload({ risk, vix, vvix, levels, events, yesterday }) {
+export function toFunctionPayload({ risk, vxn, vvix, levels, events, yesterday }) {
   return {
     level: risk.level,
     triggered: risk.triggered,
-    vix,
+    vxn,
     vvix,
     levels,
     yesterday,
@@ -71,9 +71,12 @@ export function toFunctionPayload({ risk, vix, vvix, levels, events, yesterday }
  * The `data` column: the inputs a stored brief was written from, so an old
  * brief can be read back against the tape it described.
  */
-export function toStoredData({ vix, vvix, levels, events, yesterday, macro = null }) {
+export function toStoredData({ vxn, vvix, levels, events, yesterday, macro = null }) {
   return {
-    vix,
+    // `vxn`, where briefs written before 2026-09-09 carry `vix`. Not migrated:
+    // a stored brief is the record of what was in front of you that morning,
+    // and rewriting the key would claim VXN was read on a day VIX was.
+    vxn,
     vvix,
     levels,
     yesterday,
@@ -140,7 +143,7 @@ export function formatBrief({ risk, prose, now, macro = null }) {
  *   saveError: Error|null}>}
  */
 export async function generateBrief(
-  { vix, vvix = null, levels, trades = [], macro = null, now = Date.now() },
+  { vxn, vvix = null, levels, trades = [], macro = null, now = Date.now() },
   { fetchCalendar, requestBrief, saveBrief, onProgress = () => {} }
 ) {
   onProgress('Fetching calendar…')
@@ -148,7 +151,7 @@ export async function generateBrief(
 
   const inputs = buildBriefInputs({
     calendar: calendar.events,
-    vix,
+    vxn,
     vvix,
     levels,
     trades,

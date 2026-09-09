@@ -176,6 +176,10 @@ export function toRow(t, userId) {
     regime_conviction: t.regime_conviction ?? null,
     vol_regime: t.vol_regime ?? null,
     macro_day_type: t.macro_day_type ?? null,
+    // The standing environment, same nullability rule and same reasoning.
+    macro_environment: t.macro_environment ?? null,
+    real_rate_stance: t.real_rate_stance ?? null,
+    liquidity_stance: t.liquidity_stance ?? null,
     updated_at: assertEpochMs(t.updatedAt ?? Date.now()),
   }
 }
@@ -205,6 +209,15 @@ export function stampRegime(trade, snapshot) {
     regime_conviction: snapshot.l1.conviction,
     vol_regime: snapshot.l2?.vol_regime ?? null,
     macro_day_type: snapshot.l2?.day_type ?? null,
+
+    // The standing environment, stamped beside the lean rather than instead of
+    // it. The lean is what phase 4 was built to test and failed; the
+    // environment is what the journal can test next — expectancy of longs
+    // against shorts, by environment. Keeping both means the record can answer
+    // either question later without a second logging window.
+    macro_environment: snapshot.environment?.standing ?? null,
+    real_rate_stance: snapshot.environment?.rates?.stance ?? null,
+    liquidity_stance: snapshot.environment?.liquidity?.stance ?? null,
   }
 }
 
@@ -259,6 +272,9 @@ export function fromRow(r) {
     regime_conviction: r.regime_conviction || null,
     vol_regime: r.vol_regime || null,
     macro_day_type: r.macro_day_type || null,
+    macro_environment: r.macro_environment || null,
+    real_rate_stance: r.real_rate_stance || null,
+    liquidity_stance: r.liquidity_stance || null,
     updatedAt: Number(r.updated_at) || 0,
   }
 }

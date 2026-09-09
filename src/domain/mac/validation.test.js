@@ -4,9 +4,7 @@ import assert from 'node:assert/strict'
 import {
   GATING_ENABLED,
   MIN_BUCKET_N,
-  barCalibration,
   bucketStats,
-  greenSessions,
   splitBy,
   validationReport,
   verdictFor,
@@ -31,73 +29,6 @@ test('mac is display-only until Phase 4 says otherwise', () => {
   // The whole logging phase depends on this staying false. Flipping it is a
   // deliberate act backed by the tables, never a default that drifted.
   assert.equal(GATING_ENABLED, false)
-})
-
-test('greenSessions compares each close to the previous observation', () => {
-  const green = greenSessions([
-    { date: '2026-09-04', value: 100 },
-    { date: '2026-09-08', value: 101 },
-    { date: '2026-09-09', value: 99 },
-  ])
-
-  // Monday is measured against Friday, not against a missing Sunday.
-  assert.equal(green.get('2026-09-08'), true)
-  assert.equal(green.get('2026-09-09'), false)
-  assert.equal(green.has('2026-09-04'), false, 'the first close has no prior to compare to')
-})
-
-test('barCalibration scores a snapshot against its own session', () => {
-  const rows = [
-    { date: '2026-09-08', snapshot: { date: '2026-09-08', l1: { bar: { bull_pct: 70 } } } },
-    { date: '2026-09-09', snapshot: { date: '2026-09-09', l1: { bar: { bull_pct: 30 } } } },
-  ]
-  const closes = [
-    { date: '2026-09-07', value: 100 },
-    { date: '2026-09-08', value: 101 },
-    { date: '2026-09-09', value: 100 },
-  ]
-
-  const calibration = barCalibration(rows, closes)
-
-  assert.equal(calibration.sessions, 2)
-  assert.equal(calibration.buckets.find((b) => b.label === '≥65').actual, 100)
-  assert.equal(calibration.buckets.find((b) => b.label === '≤35').actual, 0)
-})
-
-test('a bucket nothing landed in reports null, not zero percent', () => {
-  const calibration = barCalibration([], [])
-
-  for (const bucket of calibration.buckets) {
-    assert.equal(bucket.actual, null, 'zero would read as "never green"')
-    assert.equal(bucket.n, 0)
-  }
-  assert.equal(calibration.enough, false)
-})
-
-test('calibration drops sessions with no matching close rather than guessing', () => {
-  const rows = [
-    { date: '2026-12-25', snapshot: { date: '2026-12-25', l1: { bar: { bull_pct: 70 } } } },
-  ]
-  const closes = [
-    { date: '2026-12-24', value: 100 },
-    { date: '2026-12-28', value: 101 },
-  ]
-
-  assert.equal(barCalibration(rows, closes).sessions, 0)
-})
-
-test('calibration needs 60 sessions before it claims to be enough', () => {
-  const closes = [{ date: '2026-01-01', value: 100 }]
-  const rows = []
-
-  for (let i = 1; i <= 60; i += 1) {
-    const date = `2026-${String(Math.floor((i - 1) / 28) + 1).padStart(2, '0')}-${String(((i - 1) % 28) + 2).padStart(2, '0')}`
-    closes.push({ date, value: 100 + i })
-    rows.push({ date, snapshot: { date, l1: { bar: { bull_pct: 60 } } } })
-  }
-
-  assert.equal(barCalibration(rows.slice(0, 59), closes).enough, false)
-  assert.equal(barCalibration(rows, closes).enough, true)
 })
 
 test('bucketStats reports expectancy, win rate and n together', () => {
@@ -193,7 +124,30 @@ test('the report answers the spec’s two named questions', () => {
 test('an empty journal produces a report rather than a crash', () => {
   const report = validationReport({})
 
-  assert.equal(report.calibration.sessions, 0)
   assert.equal(report.splits.stdv_vol.total, 0)
   assert.equal(report.verdicts.mm_bias.state, 'insufficient')
+})
+
+test('every split column buckets into its own vocabulary', () => {
+  // The regression: environment values were matched against the bar's
+  // bear/neutral/bull, so every trade fell outside all three and the table
+  // rendered three empty rows beside a non-zero total. Nothing threw.
+  const trades = [
+    { model: 'STDV', kind: 'trade', risk: 1, pnl: -1, macro_environment: 'headwind' },
+    { model: 'STDV', kind: 'trade', risk: 1, pnl: 2, macro_environment: 'tailwind' },
+  ]
+
+  const split = splitBy(trades, 'STDV', 'macro_environment')
+
+  assert.deepEqual(
+    split.rows.map((r) => r.bucket),
+    ['headwind', 'mixed', 'tailwind']
+  )
+  assert.equal(split.rows.find((r) => r.bucket === 'headwind').n, 1)
+  assert.equal(split.rows.find((r) => r.bucket === 'tailwind').n, 1)
+  assert.equal(split.unstamped, 0)
+})
+
+test('an unknown split column fails loudly rather than bucketing into nothing', () => {
+  assert.throws(() => splitBy([], 'STDV', 'not_a_column'), /no bucket definition/)
 })

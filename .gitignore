@@ -30,3 +30,9 @@ supabase/.temp
 *.njsproj
 *.sln
 *.sw?
+
+# Backtest working data. The vintage cache is ~100MB of FRED revision history
+# and is reproducible from the API in a few minutes; the per-session output is
+# regenerated on every run. The ISM history is NOT here — it lives in
+# public/data/ism_pmi.json, is committed, and is expensive to rebuild.
+backtest/

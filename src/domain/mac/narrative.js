@@ -10,10 +10,15 @@
  * the brief after the model has finished, and `toFunctionPayload` still sends
  * the model nothing about it.
  *
- * It follows that every sentence here has to be defensible on its own. No
- * hedging language is added and none is removed: the bar sentence already says
- * "may have a tailwind" rather than a probability, and that wording stays until
- * the validation phase earns the right to change it.
+ * It follows that every sentence here has to be defensible on its own, and the
+ * bar sentence this quotes no longer claims a direction at all. It used to say
+ * "may have a tailwind"; the validation phase ran, and over 2,582 point-in-time
+ * sessions the lean separated nothing. So the paragraph now carries a
+ * description of the macro state and the vol regime — the one part that did
+ * separate — and no call on the session.
+ *
+ * The wording comes through from `bar.sentence` rather than being restated
+ * here, which is what keeps the brief and the card from ever disagreeing.
  */
 
 import { QUADRANT_LABELS } from './compose.js'

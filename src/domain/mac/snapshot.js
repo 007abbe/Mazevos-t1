@@ -4,8 +4,8 @@
  * was on a given date.
  *
  * `buildSnapshot` is a pure function of today's series, yesterday's snapshot,
- * and the manually-entered ISM. Yesterday's snapshot is the *only* history it
- * needs — every hysteresis counter travels inside it — which is what lets the
+ * the calendar and the harvested ISM. Yesterday's snapshot is the *only*
+ * history it needs — every hysteresis counter travels inside it — which is what lets the
  * whole thing be recomputed from storage without a separate state table.
  *
  * `data_health` is mandatory, not decorative. A factor computed from a stale
@@ -37,6 +37,7 @@ import {
   windLists,
 } from './compose.js'
 import { classifyDay } from './events.js'
+import { environment } from './environment.js'
 import { harvestIsm, mergeIsmHistory } from './ism.js'
 import { lastValue } from './fred.js'
 
@@ -46,32 +47,46 @@ export const SNAPSHOT_VERSION = 'mac-0.1'
 export const REQUIRED_SERIES = Object.values(SERIES).map((s) => s.id)
 
 /**
- * ISM manufacturing PMI is not on FRED and has no free API, so it is typed in
- * on release day and then lives in the snapshot, carried forward each day until
- * the next print supersedes it. The history is kept because F1 compares the
- * level to its own three-month average, which needs three prints.
+ * ISM manufacturing PMI is not on FRED and has no free API — FRED's NAPM series
+ * was discontinued in 2016 when ISM withdrew redistribution — so it is
+ * assembled from two automated sources and then lives in the snapshot, carried
+ * forward each day until the next print supersedes it. The history is kept
+ * because F1 compares the level to its own three-month average, which needs
+ * three prints.
+ *
+ * In precedence order:
+ *
+ *   - `actuals`, scraped from ForexFactory's calendar page by the Action into
+ *     `public/data/ism_pmi.json`. The real print, on the day it lands.
+ *   - the weekly feed's `previous`, which rebuilds older months for free but
+ *     is permanently one release behind.
+ *
+ * Both are merged rather than chosen between: they cover different months, and
+ * only where they overlap does the ranking decide.
+ *
+ * There is no manual entry. The panel used to carry one and it is gone — the
+ * scrape covers the current month, and `harvestHealth` turns the panel red if
+ * it stops working, which is a better guarantee than a box nobody remembers to
+ * fill. Correcting a bad print means editing `ism_pmi.json`, which is committed
+ * and therefore survives; a typed value only ever lived in one snapshot.
  *
  * @param {object|null} prior yesterday's snapshot
- * @param {{value: number, date: string}|null} entry today's manual entry
+ * @param {Array<object>|null} calendar the weekly ForexFactory feed
+ * @param {Array<object>|null} actuals harvested prints
  */
-export function resolvePmi(prior, entry, calendar = null) {
-  let history = [...(prior?.l1?.factors?.growth?.pmi_history ?? [])]
-
-  // The feed's `previous` on an ISM row is the prior month's true print, so the
-  // history fills itself in permanently one release behind. A typed entry for
-  // the same month always wins — see `mergeIsmHistory`.
+export function resolvePmi(prior, calendar = null, actuals = null) {
+  const stored = [...(prior?.l1?.factors?.growth?.pmi_history ?? [])]
   const harvested = calendar ? harvestIsm(calendar) : null
-  if (harvested) history = mergeIsmHistory(history, [harvested])
 
-  if (entry && Number.isFinite(entry.value) && entry.date) {
-    const existing = history.findIndex((row) => row.date === entry.date)
-    if (existing >= 0) history[existing] = { date: entry.date, value: entry.value }
-    else history.push({ date: entry.date, value: entry.value })
-    history.sort((a, b) => (a.date < b.date ? -1 : 1))
-  }
+  const history = mergeIsmHistory(stored, harvested ? [harvested] : [], actuals ?? [])
 
   const latest = history[history.length - 1] ?? null
-  return { value: latest?.value ?? null, date: latest?.date ?? null, history }
+  return {
+    value: latest?.value ?? null,
+    date: latest?.date ?? null,
+    source: latest?.source ?? null,
+    history,
+  }
 }
 
 /** Yesterday's memory for one factor, or undefined for a first run. */
@@ -83,8 +98,8 @@ const priorMemory = (prior, key) => prior?.l1?.factors?.[key]?.memory
  * @param {object} input
  * @param {Record<string, Array<{date: string, value: number}>>} input.series parsed FRED series
  * @param {object|null} [input.prior] yesterday's snapshot
- * @param {{value: number, date: string}|null} [input.pmiEntry] manual ISM entry
  * @param {Array<object>} [input.calendar] the ForexFactory weekly feed
+ * @param {Array<object>} [input.ismActuals] scraped ISM prints, newest scrape wins
  * @param {string} input.today `YYYY-MM-DD`, the New York trading date
  * @param {number} [input.now] epoch ms, for the day-type session windows
  * @param {string} [input.computedAt] ISO instant
@@ -92,14 +107,14 @@ const priorMemory = (prior, key) => prior?.l1?.factors?.[key]?.memory
 export function buildSnapshot({
   series,
   prior = null,
-  pmiEntry = null,
   calendar = null,
+  ismActuals = null,
   fetchErrors = {},
   today,
   now = Date.parse(`${today}T12:00:00Z`),
   computedAt,
 }) {
-  const pmi = resolvePmi(prior, pmiEntry, calendar)
+  const pmi = resolvePmi(prior, calendar, ismActuals)
 
   // F7 first: conviction and the bar both scale by the vol regime, so it has to
   // exist before the composition runs.
@@ -113,6 +128,13 @@ export function buildSnapshot({
     credit: f5Credit({ series, prior: priorMemory(prior, 'credit'), today }),
     dollar: f6Dollar({ series, prior: priorMemory(prior, 'dollar'), today }),
   }
+
+  // The environment is computed beside the factors, not from them. It reads two
+  // levels — the 10y real yield and net liquidity — where the factors read
+  // changes, and it deliberately does not enter `bias_raw`. The bar's
+  // directional claim failed validation; folding a second unvalidated claim into
+  // the same number would only make the failure harder to see.
+  const env = environment({ series, prior: prior?.environment?.memory, today })
 
   const bias = biasRaw(factors)
   const { level: convictionLevel, agreeing } = conviction(factors, bias, vol.regime)
@@ -154,7 +176,14 @@ export function buildSnapshot({
       regime_since: regime.since,
       regime_age_days: regime.age_days,
       factors: {
-        growth: { ...serialiseFactor(factors.growth), pmi_history: pmi.history },
+        growth: {
+          ...serialiseFactor(factors.growth),
+          pmi_history: pmi.history,
+          // Which of the three sources the level in play came from. Recorded
+          // because a scraped print and a typed one are the same number with
+          // very different provenance, and phase 4 should be able to tell.
+          pmi_source: pmi.source,
+        },
         inflation: serialiseFactor(factors.inflation),
         rates: serialiseFactor(factors.rates),
         liquidity: serialiseFactor(factors.liquidity),
@@ -165,6 +194,8 @@ export function buildSnapshot({
       tailwinds,
       watch: watchList(factors, today),
     },
+
+    environment: env,
 
     l2: {
       vol_regime: vol.regime,
