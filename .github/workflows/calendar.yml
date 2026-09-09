@@ -22,6 +22,16 @@ jobs:
           curl -sf https://nfs.faireconomy.media/ff_calendar_thisweek.json -o public/data/ff_calendar.json
           python3 -c "import json,sys; d=json.load(open('public/data/ff_calendar.json')); sys.exit('expected a JSON array') if not isinstance(d, list) else None"
 
+      # The weekly feed has no `actual`, so mac's ISM number would be a month
+      # stale without this. The calendar *page* does carry it, and the page is
+      # only readable from here — no CORS headers, so the browser cannot.
+      #
+      # Never fails the job: a broken scrape leaves mac on the feed's `previous`,
+      # which is exactly where it was before. `harvestHealth` surfaces a harvest
+      # that has stopped working, so a silent failure still gets noticed.
+      - name: Harvest ISM actuals
+        run: node scripts/fetch-ism.mjs
+
       # Committing here triggers the Pages deploy, which is the point: the JSON
       # is baked into the build, so a fresh calendar only reaches the browser
       # once the site rebuilds.
@@ -29,6 +39,6 @@ jobs:
         run: |
           git config user.name "finski-bot"
           git config user.email "actions@github.com"
-          git add public/data/ff_calendar.json
+          git add public/data/ff_calendar.json public/data/ism_pmi.json
           git diff --cached --quiet || git commit -m "calendar update"
           git push

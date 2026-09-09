@@ -4,7 +4,6 @@ import assert from 'node:assert/strict'
 import {
   harvestIsm,
   ismRows,
-  ismSuggestion,
   mergeIsmHistory,
   parseLevel,
   previousMonthOf,
@@ -56,26 +55,6 @@ test('harvestIsm returns null in the weeks with no ISM row', () => {
   assert.equal(harvestIsm([]), null)
   assert.equal(harvestIsm(null), null)
   assert.equal(harvestIsm([ismRow('2026-10-01T10:00:00-04:00', { forecast: '49.5' })]), null)
-})
-
-test('ismSuggestion offers the consensus, labelled as a consensus', () => {
-  const suggestion = ismSuggestion(
-    [ismRow('2026-10-01T10:00:00-04:00', { forecast: '49.5', previous: '49.1' })],
-    '2026-09-28'
-  )
-
-  assert.equal(suggestion.value, 49.5)
-  assert.equal(suggestion.date, '2026-09-01', 'the month the print describes')
-  assert.match(suggestion.label, /consensus 49\.5 for the 2026-09 print, due 2026-10-01/)
-})
-
-test('ismSuggestion switches wording once the release has passed', () => {
-  const suggestion = ismSuggestion(
-    [ismRow('2026-10-01T10:00:00-04:00', { forecast: '49.5' })],
-    '2026-10-02'
-  )
-
-  assert.match(suggestion.label, /consensus was 49\.5 for 2026-09 — enter the actual/)
 })
 
 test('a typed value outranks a harvested one for the same month', () => {
