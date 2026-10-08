@@ -482,7 +482,7 @@ button.danger {
 }
 
 /*
- * Three-position model switch: STDV | x | MM. It decides which tags the panel
+ * The model switch: STDV | x | MM | SPM-R. It decides which tags the panel
  * below it shows, so it sits in the panel's own header rather than up in the
  * field grid.
  */
@@ -541,6 +541,10 @@ button.danger {
 }
 
 .modal .tag-group { display: flex; flex-direction: column; gap: 5px; }
+
+/* Pushes a group to the far end of its row — conviction, which sits in the
+   corner the rules pills leave empty rather than opening a row of its own. */
+.modal .tag-group.to-right { margin-left: auto; }
 
 /* `.tag-group` is display:flex, which would otherwise defeat the `hidden`
    attribute that shows and hides the BE-reason pills. */
@@ -671,6 +675,34 @@ button.upload svg {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/*
+ * The screenshot gallery. Two columns so four shots read as a 2x2 block, and
+ * one column while the only tile is the upload prompt, which was full width
+ * before there was anything to sit beside it.
+ */
+.shots {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.shots.has-shots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.shots.has-shots button.upload { padding: 12px; align-self: stretch; }
+
+@media (max-width: 480px) {
+  .shots.has-shots { grid-template-columns: 1fr; }
+}
+
+/* The Clear button. Reads as active rather than as another neutral control,
+   because it only exists while there is something to clear. */
+.btn-clear {
+  background: var(--blue-bg);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.btn-clear:hover { border-color: var(--blue); }
 
 .preview {
   position: relative;

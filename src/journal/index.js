@@ -5,9 +5,11 @@ import { computeStats, fmtMoney, fmtNum } from './stats.js'
 import { openTradeForm } from './form.js'
 import {
   applyFilters, byAccount, byScope, tradeLabel, SORTS, STATUSES, DIRECTIONS, NO_FILTERS,
-  UNASSIGNED, SCOPES,
+  UNASSIGNED, SCOPES, isFiltered, clearedFilters,
 } from './filters.js'
+import { rememberedFilters, rememberFilters, forgetFilters } from './filter-memory.js'
 import { backtestAccountIds } from '../domain/account-vocab.js'
+import { modelSetup, MODELS } from '../domain/trade-vocab.js'
 import { isVeto, VETO_OUTCOME_LABELS } from '../domain/veto-vocab.js'
 import { discretionDelta } from '../domain/discretion.js'
 import { publishSummary } from '../lib/summary.js'
@@ -102,6 +104,10 @@ function renderFilters(filters, accounts, scope) {
         ${option('', 'All directions', filters.direction)}
         ${DIRECTIONS.map((d) => option(d, d, filters.direction)).join('')}
       </select>
+      <select class="filter-select" id="f-model" aria-label="Filter by model">
+        ${option('', 'All models', filters.model)}
+        ${MODELS.map((m) => option(m, m, filters.model)).join('')}
+      </select>
       <select class="filter-select" id="f-sort" aria-label="Sort trades">
         ${SORTS.map((s) => option(s.value, s.label, filters.sort)).join('')}
       </select>
@@ -110,6 +116,9 @@ function renderFilters(filters, accounts, scope) {
         ${accounts.map((a) => option(a.id, a.name, filters.account)).join('')}
         ${backtest ? '' : option(UNASSIGNED, 'Unassigned', filters.account)}
       </select>
+      <button type="button" class="ghost btn-clear" id="f-clear" data-act="clear-filters" hidden>
+        Clear filters
+      </button>
       <button type="button" class="ghost btn-accounts" data-act="accounts">Accounts</button>
       <button type="button" class="ghost btn-accounts btn-scope" data-act="switch-scope">
         ${backtest ? 'Journal' : 'Backtest'}
@@ -124,12 +133,8 @@ const fmtRisk = (risk) => {
   return n > 0 ? `$${n.toFixed(0)}` : '—'
 }
 
-/**
- * The setup column, whichever model the trade belongs to. STDV keeps A/B/C in
- * `setup_type`; MM keeps its own four in `mm_setup`. A trade logged before the
- * model switch existed has no `model` and is STDV.
- */
-const tradeSetup = (t) => (t.model === 'MM' ? t.mm_setup : t.setup_type) ?? ''
+/** The setup column, whichever model the trade belongs to. */
+const tradeSetup = (t) => modelSetup(t) ?? ''
 
 const OUTCOME_CLASSES = {
   win: 'badge-tp',
@@ -241,12 +246,18 @@ export async function renderJournal(el, { header, navigate, scope = SCOPES.LIVE 
 
   const reload = () => renderJournal(el, { header, navigate, scope })
 
-  // Saving a trade remounts this whole view, so the selected account has to
-  // outlive the mount — otherwise editing a trade would drop the trader back to
-  // all-accounts totals without them touching the dropdown. Remembered per
-  // scope: the two journals do not share a selection.
+  // Saving a trade remounts this whole view, so the bar has to outlive the
+  // mount — otherwise editing a trade would drop the trader back to an
+  // unfiltered table without them touching a dropdown. It outlives the session
+  // too: a week spent on one model should not mean re-picking it after every
+  // edit. Remembered per scope, so the two journals do not share a selection.
+  //
+  // The account comes from accounts.js rather than filter-memory, because only
+  // the caller knows which accounts still exist. An account that was deleted
+  // falls back to all, which is why it is validated here and not in the store.
   const filters = {
     ...NO_FILTERS,
+    ...rememberedFilters(scope),
     account: rememberedFilter(accounts.map((a) => a.id), wantBacktest ? [] : [UNASSIGNED], scope),
   }
 
@@ -273,6 +284,7 @@ export async function renderJournal(el, { header, navigate, scope = SCOPES.LIVE 
 
   const table = el.querySelector('#trade-table')
   const statsEl = el.querySelector('#trade-stats')
+  const clearBtn = el.querySelector('#f-clear')
 
   const paint = () => {
     const visible = applyFilters(trades, filters)
@@ -285,6 +297,12 @@ export async function renderJournal(el, { header, navigate, scope = SCOPES.LIVE 
     // which is not the same as having logged none at all.
     statsEl.innerHTML = renderStats(stats, rows)
     publishSummary(stats)
+
+    // Shown only while something is narrowing the table. A sticky filter you
+    // forgot you set looks exactly like an empty journal, and this is the one
+    // control that says otherwise — so it appears with the narrowing and
+    // disappears with it, rather than sitting there permanently as furniture.
+    clearBtn.hidden = !isFiltered(filters)
     table.innerHTML = renderTable(visible, trades.length, accountsById, scope, accounts.length)
 
     const openRow = (row) =>
@@ -304,6 +322,7 @@ export async function renderJournal(el, { header, navigate, scope = SCOPES.LIVE 
   const bind = (id, key, event) =>
     el.querySelector(id).addEventListener(event, (e) => {
       filters[key] = e.target.value
+      rememberFilters(filters, scope)
       paint()
     })
 
@@ -311,11 +330,27 @@ export async function renderJournal(el, { header, navigate, scope = SCOPES.LIVE 
   bind('#f-kind', 'kind', 'change')
   bind('#f-status', 'status', 'change')
   bind('#f-direction', 'direction', 'change')
+  bind('#f-model', 'model', 'change')
   bind('#f-sort', 'sort', 'change')
 
   el.querySelector('#f-account').addEventListener('change', (e) => {
     filters.account = e.target.value
     rememberFilter(filters.account, scope)
+    paint()
+  })
+
+  // Clearing writes the controls back by hand rather than remounting: a remount
+  // would re-run the trade query for a change that narrows nothing, and would
+  // lose the scroll position on a long table.
+  clearBtn.addEventListener('click', () => {
+    Object.assign(filters, clearedFilters(filters))
+    forgetFilters(scope)
+    rememberFilter('', scope)
+
+    el.querySelector('#f-search').value = ''
+    for (const id of ['#f-kind', '#f-status', '#f-direction', '#f-model', '#f-account']) {
+      el.querySelector(id).value = ''
+    }
     paint()
   })
 

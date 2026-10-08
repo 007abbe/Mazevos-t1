@@ -141,6 +141,64 @@ Vanilla JS + Vite. Supabase (auth, Postgres, Edge Functions). Deployed to GitHub
   records the regime the trade was *taken* under. `macro_day_type` is prefixed
   because `trades.day_type` is the manually tagged one.
 
+## Journal models
+- Four: STDV, MM, SPM-R and `x`. The model decides which panel the form renders
+  and which columns get written, and each model's own setup column is named
+  once in `SETUP_COLUMNS` / `modelSetup` — the journal list, DOM's picker and
+  DOM's report all read it from there, because each used to carry its own copy
+  of the same ternary and a fifth model meant finding three call sites.
+- A tagged model is not asked every shared question. `tagged` gates target, BE,
+  gamma and rules; `regimed` (STDV, MM) gates regime; `majored` (STDV, SPM-R)
+  gates major regime and news. Writing any of those from `tagged` saves an
+  answer the trader was never shown.
+- SPM-R's grade is A/B/C/F in **`spm_grade`**, not `setup_type`. STDV's A/B/C
+  are three different setups; these are one setup's quality score, and a shared
+  column would make every by-setup statistic average the two together.
+- **The two reworded rules kept their stored values.** "No away-stack" now
+  reads *No entry trigger* and "Size over cap" reads *Too much risk*, but
+  `rule_broken` still holds `no_away_stack` and `size_over_cap`. The tally in
+  trade-stats.js counts by value, so a second spelling would split one rule
+  into two buckets at the cutover date. Labels are what you read, values are
+  what the history is written in — and the pills render the label, which they
+  did not before (they printed the raw value and the `label` field was dead).
+- `rev_zone` stores the zone typed into its `other` box **as a zone**, not as a
+  flag plus a note, the same way `target` takes a hand-typed level. Any stored
+  value that is not in `REV_ZONES` is therefore the typed one, which is how the
+  form puts it back in the box when you edit the trade.
+- **The discretion audit is STDV and MM only.** SPM-R hides the block and writes
+  `mech_trigger`, `discretionary_act` and the four `mech_*` prices null, on the
+  same rule the model tags follow: a trade must not carry an answer the form
+  did not put in front of you. Conviction is the exception — it is a property
+  of the decision, not of the model, so SPM-R keeps it in its own tag box. Two
+  ids (`CONVICTION_IDS`), because the hidden audit is still in the DOM and one
+  shared id would put two conviction boxes on the page.
+- The journal's discretion-delta tile (`src/journal/index.js:36`) therefore
+  keeps accruing from STDV and MM only. SPM-R rows are absent from it by
+  design, not by omission.
+- A trade carries up to 4 screenshots in `images`; `image` still holds the
+  first, so FlowJournal and every pre-`images` row still resolve one and
+  nothing needed backfilling. Neither query that lists trades selects either.
+
+## Journal filters
+- The filter bar is **sticky** — it survives the remount a save causes and it
+  survives the session, in localStorage, per scope. Only the Clear button
+  resets it.
+- That buys one failure mode: a narrowing you forgot you set looks exactly like
+  an empty journal. Two things answer it, and neither is decoration. The Clear
+  button is rendered only while something is active, and `sanitiseFilters`
+  drops any stored value the current vocabulary no longer knows instead of
+  applying it — a renamed status would otherwise match nothing and read as lost
+  data. Any new filter must be added to `FILTER_KEYS` and `ALLOWED` together.
+- `sort` is not a filter. It is remembered, but it does not light the Clear
+  button and Clear does not reset it — a lit button over a full table teaches
+  you to ignore the one control that explains an empty one.
+- The **account** filter is still owned by `accounts.js`, not `filter-memory.js`,
+  because restoring it needs the list of accounts that still exist. That split
+  is why `rememberFilters` drops `account` on the way in.
+- Filtering by model reads `tradeModel`, which resolves null to STDV. Every row
+  logged before the `model` column existed is STDV, and a filter that missed
+  them would hide the oldest half of the journal from its own model.
+
 ## Rules
 - Never modify the Supabase schema without asking. Existing trade data is production.
 - Verify each migration step in the browser before moving on.

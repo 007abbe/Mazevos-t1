@@ -5,8 +5,8 @@ import {
 } from './mapping.js'
 import {
   TYPES, STATUSES, MODELS, DEFAULT_MODEL, SETUP_TYPES, MM_SETUPS, BANDS, TARGETS,
-  REGIMES, GAMMA_REGIMES, BE_REASONS, DAY_TYPES,
-  RULE_BROKEN_VALUES,
+  SPM_GRADES, ENTRY_TRIGGERS, TIERS, REV_ZONES, REV_ZONE_OTHER, modelSetup,
+  REGIMES, GAMMA_REGIMES, BE_REASONS, DAY_TYPES, RULE_BROKEN_VALUES, RULES_BROKEN,
 } from '../domain/trade-vocab.js'
 
 const USER = '00000000-0000-0000-0000-000000000001'
@@ -82,6 +82,17 @@ test('fromRow -> toRow round-trips every column', () => {
     mech_stop: 19845.5,
     mech_target: 19960,
     mech_exit: 19943.25,
+
+    // `dbRow` is shaped as Postgres returned it before SPM-R and `images`
+    // existed, which is what the overwhelming majority of production rows
+    // still look like. Its new columns therefore come back empty — and
+    // `images` comes back holding the one screenshot `image` already had,
+    // which is the back-compat the gallery depends on.
+    spm_grade: null,
+    tier: null,
+    entry_trigger: [],
+    rev_zone: [],
+    images: ['data:image/jpeg;base64,/9j/4AAQ'],
   })
 })
 
@@ -107,8 +118,9 @@ test('discretionary_act is never null, matching rule_broken and target', () => {
 test('round-trip covers the full column set — no field silently dropped', () => {
   const COLUMNS = [
     'id', 'user_id', 'num', 'date', 'type', 'status', 'pnl', 'risk', 'rr',
-    'thesis', 'hindsight', 'image', 'updated_at', 'model', 'setup_type',
-    'mm_setup', 'band_touched', 'away_stack', 'stack_ratio', 'entry_delay_sec',
+    'thesis', 'hindsight', 'image', 'images', 'updated_at', 'model', 'setup_type',
+    'mm_setup', 'spm_grade', 'tier', 'entry_trigger', 'rev_zone',
+    'band_touched', 'away_stack', 'stack_ratio', 'entry_delay_sec',
     'planned_stop', 'entry_price', 'actual_exit', 'target', 'be_moved',
     'be_reason', 'regime', 'gamma_regime', 'major_regime', 'day_type',
     'news_window', 'rule_broken', 'account_id', 'kind', 'veto_outcome',
@@ -297,7 +309,7 @@ test('a pre-MM row has no model, which the form reads as STDV', () => {
 test('vocabulary values match what FlowJournal writes', () => {
   assert.deepEqual(TYPES, ['Long', 'Short'])
   assert.deepEqual(STATUSES, ['Open', 'TP', 'SL', 'BE', 'TP1+BE'])
-  assert.deepEqual(MODELS, ['STDV', 'x', 'MM'])
+  assert.deepEqual(MODELS, ['STDV', 'x', 'MM', 'SPM-R'])
   assert.ok(MODELS.includes(DEFAULT_MODEL))
   assert.deepEqual(SETUP_TYPES, ['A', 'B', 'C'])
   assert.deepEqual(MM_SETUPS, [
@@ -307,7 +319,14 @@ test('vocabulary values match what FlowJournal writes', () => {
     'Gamma-wall-Consumption-break',
   ])
   assert.deepEqual([...BANDS].sort(), ['+2.6σ', '+2σ', '-2.6σ', '-2σ'].sort())
-  assert.deepEqual(TARGETS, ['VWAP', 'POC', 'HVN', 'Major putwall', 'Major callwall'])
+  assert.deepEqual(TARGETS, [
+    'VWAP', 'Weekly-POC', 'Prev-day-POC', 'Intraday-POC', 'HVN', 'Single-prints',
+    'Major putwall', 'Major callwall', 'Callwall', 'Putwall',
+  ])
+  assert.deepEqual(SPM_GRADES, ['A', 'B', 'C', 'F'])
+  assert.deepEqual(TIERS, ['T1', 'T2', 'T3', 'T4', 'T5'])
+  assert.deepEqual(ENTRY_TRIGGERS, ['Absorption', '3x Imbalance', 'Initiation', 'Delta-flip'])
+  assert.ok(REV_ZONES.includes(REV_ZONE_OTHER), 'the other box needs an option to open it')
   assert.deepEqual(REGIMES, ['trend', 'balance', 'volatile'])
   assert.deepEqual(GAMMA_REGIMES, ['positive', 'negative'])
   assert.deepEqual(BE_REASONS, ['fear', 'structure'])
@@ -316,6 +335,84 @@ test('vocabulary values match what FlowJournal writes', () => {
     [...RULE_BROKEN_VALUES].sort(),
     ['be_fear', 'chased_entry', 'early_entry', 'no_away_stack', 'other', 'size_over_cap', 'traded_news']
   )
+})
+
+test('the two reworded rules kept their stored values', () => {
+  // "No away-stack" reads "No entry trigger" and "Size over cap" reads "Too
+  // much risk" since SPM-R, but the values are what production rows are
+  // written in. Renaming them would strand every trade already carrying one,
+  // and the rule tally in trade-stats.js counts by value, so a second spelling
+  // would split one rule into two buckets at the cutover.
+  const byValue = Object.fromEntries(RULES_BROKEN.map((r) => [r.value, r.label]))
+  assert.equal(byValue.no_away_stack, 'No entry trigger')
+  assert.equal(byValue.size_over_cap, 'Too much risk')
+})
+
+test('an SPM-R row round-trips its own columns and writes no other model\'s', () => {
+  const row = {
+    ...dbRow,
+    model: 'SPM-R',
+    setup_type: null,
+    mm_setup: null,
+    spm_grade: 'B',
+    tier: 'T3',
+    entry_trigger: ['Absorption', 'Delta-flip'],
+    rev_zone: ['Weekly LVN', '21050 swing'],
+    band_touched: [],
+  }
+  const t = fromRow(row)
+
+  assert.equal(t.model, 'SPM-R')
+  assert.equal(t.spm_grade, 'B')
+  assert.equal(t.tier, 'T3')
+  assert.deepEqual(t.entry_trigger, ['Absorption', 'Delta-flip'])
+  // A hand-typed zone rides in the same array as the suggested ones.
+  assert.deepEqual(t.rev_zone, ['Weekly LVN', '21050 swing'])
+  assert.equal(t.setup_type, null)
+  assert.equal(t.mm_setup, null)
+
+  const back = toRow(t, USER)
+  assert.equal(back.spm_grade, 'B')
+  assert.equal(back.tier, 'T3')
+  assert.deepEqual(back.rev_zone, ['Weekly LVN', '21050 swing'])
+})
+
+test('modelSetup reads whichever column the model keeps its setup in', () => {
+  assert.equal(modelSetup({ model: 'STDV', setup_type: 'A' }), 'A')
+  assert.equal(modelSetup({ model: 'MM', mm_setup: 'Open-Drive' }), 'Open-Drive')
+  assert.equal(modelSetup({ model: 'SPM-R', spm_grade: 'F' }), 'F')
+  // No model at all is a pre-switch row, which is STDV.
+  assert.equal(modelSetup({ setup_type: 'C' }), 'C')
+  // `x` has no setup of its own, and must not fall through to STDV's column.
+  assert.equal(modelSetup({ model: 'x', setup_type: 'A' }), null)
+  assert.equal(modelSetup({ model: 'SPM-R' }), null)
+  assert.equal(modelSetup(null), null)
+})
+
+test('the new array columns are never null, matching rule_broken', () => {
+  const empty = toRow(fromRow({ id: 'x', updated_at: 1 }), USER)
+  assert.deepEqual(empty.entry_trigger, [])
+  assert.deepEqual(empty.rev_zone, [])
+  assert.deepEqual(empty.images, [])
+  assert.equal(empty.spm_grade, null)
+  assert.equal(empty.tier, null)
+})
+
+test('a row written before `images` still resolves its one screenshot', () => {
+  // The gallery reads `images`; rows predating it carry only `image`, and they
+  // must not look like they lost the screenshot they have.
+  const legacy = fromRow({ id: 'x', image: 'data:image/jpeg;base64,AAA', updated_at: 1 })
+  assert.deepEqual(legacy.images, ['data:image/jpeg;base64,AAA'])
+
+  // And `images` wins once it is populated, rather than being merged with the
+  // copy of its own first element that `image` holds.
+  const current = fromRow({
+    id: 'x',
+    image: 'data:image/jpeg;base64,AAA',
+    images: ['data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB'],
+    updated_at: 1,
+  })
+  assert.equal(current.images.length, 2)
 })
 
 test('the sample row only uses valid vocabulary values', () => {

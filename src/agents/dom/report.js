@@ -7,6 +7,7 @@
  */
 
 import { computeTradeStats, rMultiple } from '../../domain/trade-stats.js'
+import { modelSetup } from '../../domain/trade-vocab.js'
 import { describeScope, localDate } from './selection.js'
 
 /**
@@ -32,7 +33,7 @@ export function toNotes(trades) {
         r: r == null ? null : Number(r.toFixed(2)),
         model: t.model || 'STDV',
         // One setup column per model; only one of them is ever populated.
-        setup: (t.model === 'MM' ? t.mm_setup : t.setup_type) || null,
+        setup: modelSetup(t),
         bands: t.band_touched ?? [],
         away_stack: !!t.away_stack,
         be_reason: t.be_reason || null,
