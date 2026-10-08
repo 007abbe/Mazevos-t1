@@ -23,8 +23,8 @@ import { snapshotFor } from '../agents/reggie/mac/snapshots.js'
  */
 const LIST_COLUMNS = `
   id, num, date, type, status, pnl, risk, rr, thesis, model, setup_type, mm_setup,
-  regime, day_type, account_id, kind, veto_outcome, conviction, mech_trigger,
-  mech_counterfactual_r
+  spm_grade, regime, day_type, account_id, kind, veto_outcome, conviction,
+  mech_trigger, mech_counterfactual_r
 `
 
 /**
@@ -48,12 +48,13 @@ export async function listTrades({ limit = 500 } = {}) {
 
 /**
  * Every column DOM's analysis reads — the model tags, the sequencing fields,
- * and the trader's own notes — but *not* `image`, which holds base64
+ * and the trader's own notes — but *not* `image` or `images`, which hold base64
  * screenshots and would dominate the response for a large selection.
  */
 const ANALYSIS_COLUMNS = `
   id, num, date, type, status, pnl, risk, rr, thesis, hindsight,
-  model, setup_type, mm_setup, band_touched, away_stack, stack_ratio,
+  model, setup_type, mm_setup, spm_grade, tier, entry_trigger, rev_zone,
+  band_touched, away_stack, stack_ratio,
   entry_delay_sec, planned_stop, entry_price, actual_exit, target, be_moved,
   be_reason, regime, day_type, news_window, rule_broken, account_id, kind,
   conviction, mech_trigger, discretionary_act, mech_counterfactual_r, updated_at

@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   applyFilters, byAccount, byScope, tradeLabel, NO_FILTERS, UNASSIGNED, SCOPES,
+  isFiltered, clearedFilters, sanitiseFilters, tradeModel, FILTER_KEYS,
 } from './filters.js'
 
 const trade = (over = {}) => ({
@@ -222,4 +223,103 @@ test('the kind filter combines with the account filter', () => {
     applyFilters(rows, { account: 'a', kind: 'veto' }).map((t) => t.num),
     [1]
   )
+})
+
+
+/* --------------------------------------------------------- model filter ---- */
+
+test('the model filter narrows to one model', () => {
+  const rows = [
+    trade({ num: 1, model: 'STDV' }),
+    trade({ num: 2, model: 'MM' }),
+    trade({ num: 3, model: 'SPM-R' }),
+  ]
+  assert.deepEqual(
+    applyFilters(rows, { model: 'SPM-R' }).map((t) => t.num),
+    [3]
+  )
+})
+
+test('filtering for STDV finds the rows logged before `model` existed', () => {
+  // Every pre-switch row has model null, and they are all STDV. If the filter
+  // missed them, picking STDV would hide the oldest half of the journal from
+  // its own model — which reads as lost data, not as a filter.
+  const rows = [trade({ num: 1, model: null }), trade({ num: 2, model: 'MM' })]
+  assert.deepEqual(
+    applyFilters(rows, { model: 'STDV' }).map((t) => t.num),
+    [1]
+  )
+  assert.equal(tradeModel({ model: null }), 'STDV')
+  assert.equal(tradeModel({}), 'STDV')
+})
+
+test('the model filter combines with the others rather than replacing them', () => {
+  const rows = [
+    trade({ num: 1, model: 'SPM-R', type: 'Long' }),
+    trade({ num: 2, model: 'SPM-R', type: 'Short' }),
+    trade({ num: 3, model: 'MM', type: 'Short' }),
+  ]
+  assert.deepEqual(
+    applyFilters(rows, { model: 'SPM-R', direction: 'Short' }).map((t) => t.num),
+    [2]
+  )
+})
+
+/* ------------------------------------------------- sticky filter plumbing -- */
+
+test('isFiltered is false for an empty bar and true for any narrowing', () => {
+  assert.equal(isFiltered(NO_FILTERS), false)
+  assert.equal(isFiltered({}), false)
+  for (const key of FILTER_KEYS) {
+    assert.equal(isFiltered({ [key]: 'x' }), true, `${key} should count as filtered`)
+  }
+})
+
+test('a sort is not a filter', () => {
+  // Otherwise the Clear button sits lit over a table showing every row, which
+  // teaches you to ignore the one control that explains an empty one.
+  assert.equal(isFiltered({ sort: 'pnl-low' }), false)
+})
+
+test('clearing drops every narrowing and keeps the sort', () => {
+  const cleared = clearedFilters({
+    search: 'vwap',
+    status: 'SL',
+    direction: 'Long',
+    model: 'MM',
+    account: 'acct-1',
+    kind: 'veto',
+    sort: 'pnl-low',
+  })
+  assert.equal(isFiltered(cleared), false)
+  assert.equal(cleared.sort, 'pnl-low')
+})
+
+test('a stored filter whose value no longer exists falls back to no narrowing', () => {
+  // The bar now outlives the vocabulary it was written against. Applying a
+  // status that was since renamed narrows the table to nothing, and an empty
+  // journal reads as lost data rather than as a stale filter.
+  const safe = sanitiseFilters({ status: 'PARTIAL', model: 'GNOSIS', direction: 'Long' })
+  assert.equal(safe.status, '')
+  assert.equal(safe.model, '')
+  assert.equal(safe.direction, 'Long', 'a value that is still legal survives')
+})
+
+test('sanitiseFilters survives junk without throwing', () => {
+  assert.deepEqual(sanitiseFilters(null), { ...NO_FILTERS })
+  assert.deepEqual(sanitiseFilters('nope'), { ...NO_FILTERS })
+  assert.deepEqual(sanitiseFilters([]), { ...NO_FILTERS })
+  assert.equal(sanitiseFilters({ search: 42 }).search, '', 'a non-string search is dropped')
+  assert.equal(sanitiseFilters({ sort: 'sideways' }).sort, 'newest')
+})
+
+test('a restored search is capped rather than trusted at any length', () => {
+  const long = 'x'.repeat(5000)
+  assert.equal(sanitiseFilters({ search: long }).search.length, 200)
+})
+
+test('sanitiseFilters always returns a complete set, never a partial one', () => {
+  // Callers spread it straight into the live filter object; a missing key would
+  // leave whatever was there before, which is the opposite of restoring.
+  assert.deepEqual(Object.keys(sanitiseFilters({})).sort(), Object.keys(NO_FILTERS).sort())
 })

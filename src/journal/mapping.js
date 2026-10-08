@@ -16,8 +16,14 @@
  *   planned_stop     numeric
  *   actual_exit      numeric
  *   entry_price      numeric  STDV and MM; null on `x` and on older STDV rows
- *   model            text     'STDV' | 'x' | 'MM'; null on pre-MM rows = STDV
+ *   model            text     'STDV' | 'x' | 'MM' | 'SPM-R'; null = STDV
  *   mm_setup         text     MM only; setup_type stays STDV's A/B/C
+ *   spm_grade        text     SPM-R only; A/B/C/F, its own column for the same
+ *                             reason mm_setup is — see trade-vocab.js
+ *   tier             text     SPM-R only; T1-T5
+ *   entry_trigger    text[]   SPM-R only
+ *   rev_zone         text[]   SPM-R only; free text as well as the suggestions
+ *   images           text[]   up to 4 base64 data URIs; `image` holds the first
  *   rule_broken      text[]   Postgres array, always an array, never null
  *   band_touched     text[]   was text; see the migration note below
  *   target           text[]   was text; free text as well as the suggestions
@@ -128,11 +134,20 @@ export function toRow(t, userId) {
     thesis: t.thesis ?? null,
     hindsight: t.hindsight ?? null,
     image: t.image ?? null,
+    // Up to four screenshots. `image` above still carries the first one, so
+    // FlowJournal and anything else reading the old column keeps working and
+    // no existing row needed backfilling. The form is what keeps the two in
+    // step; this mapping only moves them.
+    images: Array.isArray(t.images) ? t.images : [],
     // Null means a row written before the model switch existed; the form reads
     // that as STDV rather than rewriting history.
     model: t.model ?? null,
     setup_type: t.setup_type ?? null,
     mm_setup: t.mm_setup ?? null,
+    spm_grade: t.spm_grade ?? null,
+    tier: t.tier ?? null,
+    entry_trigger: Array.isArray(t.entry_trigger) ? t.entry_trigger : [],
+    rev_zone: Array.isArray(t.rev_zone) ? t.rev_zone : [],
     band_touched: Array.isArray(t.band_touched) ? t.band_touched : [],
     away_stack: t.away_stack ?? null,
     stack_ratio: t.stack_ratio ?? null,
@@ -235,9 +250,23 @@ export function fromRow(r) {
     thesis: r.thesis || '',
     hindsight: r.hindsight || '',
     image: r.image || null,
+    // A row written before `images` existed has only `image`, and it must still
+    // show up in the gallery rather than appearing to have lost its screenshot
+    // — so the single column is read as a one-image list when the array is
+    // empty. The reverse never needs handling: `images` is only ever written
+    // alongside `image`.
+    images: Array.isArray(r.images) && r.images.length
+      ? r.images
+      : r.image
+        ? [r.image]
+        : [],
     model: r.model || null,
     setup_type: r.setup_type || null,
     mm_setup: r.mm_setup || null,
+    spm_grade: r.spm_grade || null,
+    tier: r.tier || null,
+    entry_trigger: Array.isArray(r.entry_trigger) ? r.entry_trigger : [],
+    rev_zone: Array.isArray(r.rev_zone) ? r.rev_zone : [],
     band_touched: Array.isArray(r.band_touched) ? r.band_touched : [],
     away_stack: r.away_stack == null ? false : !!r.away_stack,
     stack_ratio: r.stack_ratio == null ? null : Number(r.stack_ratio),

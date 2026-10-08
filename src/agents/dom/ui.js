@@ -1,4 +1,5 @@
 import { esc, explainFailure } from '../../lib/ui-text.js'
+import { modelSetup } from '../../domain/trade-vocab.js'
 import { listTradesForAnalysis } from '../../journal/trades.js'
 import { fmtMoney } from '../../journal/stats.js'
 import { selectThisWeek, selectToday } from './selection.js'
@@ -13,14 +14,15 @@ const shortDate = (date) => (date ?? '').slice(0, 16).replace('T', ' ')
 
 /**
  * STDV's setups are single letters and read as "Setup B"; MM's are named
- * ("Open-Drive"), so they stand on their own. A trade with neither is untagged.
+ * ("Open-Drive"), so they stand on their own. SPM-R's is a grade, so it reads
+ * as one. A trade with none of them is untagged.
  */
-const setupLabel = (trade) =>
-  trade.model === 'MM'
-    ? esc(trade.mm_setup ?? '')
-    : trade.setup_type
-      ? `Setup ${esc(trade.setup_type)}`
-      : ''
+const setupLabel = (trade) => {
+  const setup = modelSetup(trade)
+  if (!setup) return ''
+  if (trade.model === 'SPM-R') return `Grade ${esc(setup)}`
+  return trade.model === 'MM' ? esc(setup) : `Setup ${esc(setup)}`
+}
 
 const tradeRow = (trade, selected) => `
   <label class="pick-row">

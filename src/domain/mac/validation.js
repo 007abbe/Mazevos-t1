@@ -117,7 +117,7 @@ export function bucketStats(trades) {
  * Expectancy by bucket for one model.
  *
  * @param {object[]} trades live trades only
- * @param {string} model 'STDV' or 'MM'
+ * @param {string} model a MODELS code, e.g. 'STDV', 'MM' or 'SPM-R'
  * @param {'vol_regime'|'regime_bias'} key
  */
 /**

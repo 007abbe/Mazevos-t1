@@ -1,6 +1,7 @@
 import {
   TYPES, STATUSES, MODELS, DEFAULT_MODEL, SETUP_TYPES, MM_SETUPS, BANDS, TARGETS,
   REGIMES, GAMMA_REGIMES, BE_REASONS, DAY_TYPES, RULES_BROKEN,
+  SPM_GRADES, ENTRY_TRIGGERS, TIERS, REV_ZONES, REV_ZONE_OTHER,
 } from '../domain/trade-vocab.js'
 import {
   KINDS, DEFAULT_KIND, VETO_OUTCOMES, VETO_OUTCOME_LABELS, MECH_TRIGGERS,
@@ -11,7 +12,7 @@ import { SCOPES } from './filters.js'
 import { upsertTrade, deleteTrade, getTrade, nextTradeNum } from './trades.js'
 import { listAccounts, lastUsedAccount, rememberLastUsedAccount } from './accounts.js'
 import { toDatetimeLocal, isValidTradeDate } from './mapping.js'
-import { compressImage, dataUrlBytes, isImageFile } from './screenshots.js'
+import { compressImage, dataUrlBytes, isImageFile, MAX_IMAGES } from './screenshots.js'
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -39,8 +40,11 @@ const options = (values, selected) =>
  * so the order the user sees lives here. Values missing from `order` fall to
  * the end rather than disappearing.
  */
-const inOrder = (values, order) => {
-  const rank = (v) => (order.indexOf(v) < 0 ? order.length : order.indexOf(v))
+const inOrder = (values, order, keyOf = (v) => v) => {
+  const rank = (v) => {
+    const i = order.indexOf(keyOf(v))
+    return i < 0 ? order.length : i
+  }
   return [...values].sort((a, b) => rank(a) - rank(b))
 }
 
@@ -50,6 +54,42 @@ const RULE_ORDER = [
   'early_entry', 'no_away_stack', 'size_over_cap', 'be_fear',
   'chased_entry', 'traded_news', 'other',
 ]
+
+/**
+ * A multi-value chooser: pick from a dropdown, see what you picked as pills you
+ * can click to drop. `key` names the Set on `state` it fills.
+ *
+ * Target had this shape alone until SPM-R needed it twice more, for entry
+ * trigger and reversion zone. One implementation rather than three, because the
+ * three differ only in their vocabulary and in whether a value can be typed:
+ * `custom` adds a free-text box (target's hand-typed levels), and `other` names
+ * the one option that reveals one (rev zone's `other`).
+ */
+const chooser = (key, label, values, { custom = '', other = '', otherValue = '' } = {}) => `
+  <div class="tag-row">
+    <label class="tag-group">
+      <span class="tag-label">${label}</span>
+      <select class="tag-select" data-add="${esc(key)}">
+        <option value="">Add…</option>${options(values)}
+      </select>
+    </label>
+    ${custom
+      ? `<label class="tag-group">
+      <span class="tag-label">${custom}</span>
+      <input type="text" class="tag-input" data-custom="${esc(key)}" placeholder="custom…">
+    </label>`
+      : ''}
+    ${other
+      ? `<label class="tag-group" data-other-for="${esc(key)}" hidden>
+      <span class="tag-label">${other}</span>
+      <input type="text" class="tag-input" id="f-${esc(key)}-other" placeholder="name it…" value="${esc(otherValue)}">
+    </label>`
+      : ''}
+    <div class="tag-group">
+      <span class="tag-label">Chosen</span>
+      <div class="pill-row" data-chosen="${esc(key)}"></div>
+    </div>
+  </div>`
 
 /** FlowJournal capitalises these labels while storing the lowercase value. */
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -63,8 +103,15 @@ const CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1
  * and rendered back from it. Without that, switching STDV → MM → STDV would
  * silently empty every number the trader had already typed.
  */
+// Declared above TEXT_FIELDS, which names the panel's box: a module-level
+// `const` is in its temporal dead zone until its own line runs, so reading it
+// from an earlier initialiser throws on import rather than at the call site.
+const CONVICTION_IDS = { panel: 'f-spm-conviction', audit: 'f-conviction' }
+
 const TEXT_FIELDS = {
   day_type: '#f-day-type',
+  conviction: `#${CONVICTION_IDS.panel}`,
+  rev_zone_other: '#f-rev_zone-other',
   stack_ratio: '#f-stack-ratio',
   entry_delay_sec: '#f-entry-delay',
   planned_stop: '#f-planned-stop',
@@ -78,24 +125,8 @@ const CHECK_FIELDS = {
   news_window: '#f-news-window',
 }
 
-/** Shared by every model that has tags at all: STDV and MM both log these. */
-const targetRow = () => `
-  <div class="tag-row">
-    <label class="tag-group">
-      <span class="tag-label">Target</span>
-      <select class="tag-select" id="f-target-add">
-        <option value="">Add…</option>${options(TARGETS)}
-      </select>
-    </label>
-    <label class="tag-group">
-      <span class="tag-label">Custom target</span>
-      <input type="text" id="f-target-custom" class="tag-input" placeholder="custom…">
-    </label>
-    <div class="tag-group">
-      <span class="tag-label">Chosen</span>
-      <div class="pill-row" id="target-chosen"></div>
-    </div>
-  </div>`
+/** Shared by every model that has tags at all: STDV, MM and SPM-R all log these. */
+const targetRow = () => chooser('target', 'Target', TARGETS, { custom: 'Custom target' })
 
 const beReasonGroup = () => `
   <div class="tag-group" id="grp-be-reason" hidden>
@@ -110,11 +141,25 @@ const rulesGroup = () => `
       ${pill('rule_broken_any', 'yes', 'Yes')}${pill('rule_broken_any', 'no', 'No')}
     </div>
     <div class="pill-row" id="grp-rules-broken" hidden>
-      ${inOrder(RULES_BROKEN.map((r) => r.value), RULE_ORDER)
-        .map((v) => `<button type="button" class="pill pill-red" data-multi="rule_broken" data-val="${esc(v)}">${esc(v)}</button>`)
+      ${inOrder(RULES_BROKEN, RULE_ORDER, (r) => r.value)
+        .map((r) => multiPill('rule_broken', r.value, r.label, 'pill-red'))
         .join('')}
     </div>
   </div>`
+
+/**
+ * Conviction, 1-10. Rendered inside the tag panel for the models that ask it
+ * there (SPM-R), and inside the discretion audit for the ones that do not.
+ *
+ * Two ids, not one: under SPM-R the hidden audit is still in the DOM, so a
+ * shared id would put two of them on the page and leave `$('#f-conviction')`
+ * returning whichever happened to come first. `harvest` reads whichever box
+ * the current model shows and `renderPanel` writes the value back into the
+ * other, so it stays one answer about the trade however you switch models
+ * while typing it.
+ */
+const convictionField = (id, value, cls = '') =>
+  `<label class="tag-group${cls ? ` ${cls}` : ''}"><span class="tag-label">Conviction (${CONVICTION_MIN}–${CONVICTION_MAX})</span><input class="tag-input" type="number" id="${id}" min="${CONVICTION_MIN}" max="${CONVICTION_MAX}" step="1" placeholder="1–10" value="${esc(value)}"></label>`
 
 const num = (id, label, value, step = '0.25', placeholder = 'price') =>
   `<label class="tag-group"><span class="tag-label">${label}</span><input class="tag-input" type="number" id="${id}" step="${step}" placeholder="${placeholder}" value="${esc(value)}"></label>`
@@ -206,12 +251,77 @@ const mmPanel = (fields, mmSetup) => `
 
   ${rulesGroup()}`
 
+/**
+ * SPM-R: a reversion read. Grade is how good the setup was, rev zone is what it
+ * was reverting from, entry trigger is what got it filled and tier is how it
+ * was sized.
+ *
+ * No Regime and no Day type — SPM-R does not read either, and offering them
+ * would put an unanswerable question on every entry. Gamma and major regime,
+ * target, BE, news and the rules are shared with STDV, so they are the same
+ * controls writing the same columns.
+ */
+const spmPanel = (fields, grade, tier, revZoneOther) => `
+  <div class="tag-row">
+    <div class="tag-group">
+      <span class="tag-label">Grade</span>
+      <div class="pill-row">${SPM_GRADES.map((v) => pill('spm_grade', v)).join('')}</div>
+    </div>
+    <label class="tag-group">
+      <span class="tag-label">Tier</span>
+      <select class="tag-select" id="f-tier"><option value="">—</option>${options(TIERS, tier)}</select>
+    </label>
+    <div class="tag-group">
+      <span class="tag-label">Gamma regime</span>
+      <div class="pill-row">${GAMMA_REGIMES.map((v) => pill('gamma_regime', v, cap(v))).join('')}</div>
+    </div>
+    <div class="tag-group">
+      <span class="tag-label">Major regime</span>
+      <div class="pill-row">${pill('major_regime', 'yes', 'Yes')}${pill('major_regime', 'no', 'No')}</div>
+    </div>
+  </div>
+
+  ${chooser('rev_zone', 'Rev zone', REV_ZONES, { other: 'Other zone', otherValue: revZoneOther })}
+
+  ${chooser('entry_trigger', 'Entry trigger', ENTRY_TRIGGERS)}
+
+  ${targetRow()}
+
+  <div class="tag-row">
+    ${num('f-planned-stop', 'Planned stop', fields.planned_stop)}
+    ${num('f-entry-price', 'Entry price', fields.entry_price)}
+    ${num('f-actual-exit', 'Actual exit', fields.actual_exit)}
+  </div>
+
+  <div class="tag-row">
+    <label class="tag-toggle"><input type="checkbox" id="f-be-moved"${fields.be_moved ? ' checked' : ''}><span class="tswitch"></span>BE moved</label>
+    ${beReasonGroup()}
+    <label class="tag-toggle"><input type="checkbox" id="f-news-window"${fields.news_window ? ' checked' : ''}><span class="tswitch"></span>News ±15 min</label>
+  </div>
+
+  <div class="tag-row">
+    ${rulesGroup()}
+    ${convictionField(CONVICTION_IDS.panel, fields.conviction, 'to-right')}
+  </div>`
+
 /** `x`: no model tags at all. Thesis, hindsight and a screenshot are the trade. */
 const xPanel = () =>
   `<p class="muted-tag">No model tags — thesis, hindsight notes and a screenshot only.</p>`
 
-const panel = (model, fields, mmSetup) =>
-  model === 'MM' ? mmPanel(fields, mmSetup) : model === 'x' ? xPanel() : stdvPanel(fields)
+/**
+ * Which panel each model renders. A table rather than a chain of ternaries —
+ * the chain was already three deep at MM, and its fallthrough meant any model
+ * without an entry silently rendered STDV's tags: the one failure mode that
+ * writes the wrong columns without ever looking wrong.
+ */
+const PANELS = {
+  STDV: (st, fields) => stdvPanel(fields),
+  MM: (st, fields) => mmPanel(fields, st.mm_setup),
+  'SPM-R': (st, fields) => spmPanel(fields, st.spm_grade, st.tier, fields.rev_zone_other),
+  x: () => xPanel(),
+}
+
+const panel = (state, fields) => (PANELS[state.model] ?? PANELS[DEFAULT_MODEL])(state, fields)
 
 const modelSwitch = (model) => `
   <div class="model-switch" role="radiogroup" aria-label="Trading model">
@@ -257,27 +367,27 @@ const outcomeField = () => `
   </div>`
 
 /**
- * The discretion audit. Asked on every entry, whatever the model and whichever
- * journal — the question "would a strict mechanical SPM/MM have fired here" is
- * not a property of STDV or MM, it is a property of the decision.
+ * The discretion audit: would a strict mechanical run have fired here, and what
+ * would it have made. Asked on STDV and MM, where the question is about how far
+ * the decision drifted from the model.
+ *
+ * SPM-R does not ask it — the block is hidden for that model and its columns
+ * are written null. Conviction is the exception: that one is a property of the
+ * decision whatever the model, so SPM-R keeps it in its own tag box.
  *
  * Sits outside `#tag-panel` on purpose: the panel is destroyed and rebuilt on
- * every model switch, and these answers must survive that. Nothing here is
- * harvested into `fields` for the same reason — the elements are never replaced,
- * so `save` reads them straight off the DOM.
+ * every model switch, and these answers must survive that. Nothing here but
+ * conviction is harvested into `fields` for the same reason — the elements are
+ * never replaced, so `save` reads them straight off the DOM.
  */
 const discretionBlock = (t) => `
-  <div class="tags disc full">
+  <div class="tags disc full" id="w-discretion">
     <div class="tags-head">
       <span>Discretion audit</span>
     </div>
 
     <div class="tag-row">
-      <label class="tag-group">
-        <span class="tag-label">Conviction (${CONVICTION_MIN}–${CONVICTION_MAX})</span>
-        <input class="tag-input" type="number" id="f-conviction" min="${CONVICTION_MIN}"
-               max="${CONVICTION_MAX}" step="1" placeholder="1–10" value="${esc(t.conviction ?? '')}">
-      </label>
+      ${convictionField(CONVICTION_IDS.audit, t.conviction ?? '')}
       <div class="tag-group">
         <span class="tag-label">Mech trigger</span>
         <div class="pill-row">${MECH_TRIGGERS.map((v) => pill('mech_trigger', v, cap(v))).join('')}</div>
@@ -427,6 +537,14 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
     model: full.model || DEFAULT_MODEL,
     setup_type: full.setup_type ?? null,
     mm_setup: full.mm_setup ?? null,
+    spm_grade: full.spm_grade ?? null,
+    tier: full.tier ?? null,
+    entry_trigger: new Set(full.entry_trigger ?? []),
+    // Like `target`, this holds vocabulary values and one hand-typed zone
+    // alike. A stored zone that is not in REV_ZONES *is* the typed one, so
+    // `other` is re-selected for it below — otherwise editing a trade would
+    // show the text box closed over a value the trade is actually carrying.
+    rev_zone: new Set(full.rev_zone ?? []),
     band_touched: new Set(full.band_touched ?? []),
     // Holds suggestions and hand-typed levels alike — the column is free text.
     target: new Set(full.target ?? []),
@@ -441,12 +559,28 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
     // existing trade the stored array answers the question; a new one starts
     // unanswered rather than presuming a "no".
     rule_broken_any: full.id ? (full.rule_broken?.length ? 'yes' : 'no') : null,
-    image: full.image ?? null,
+    // Up to MAX_IMAGES screenshots. `fromRow` already widened a pre-`images`
+    // row's single `image` into a one-element list, so nothing here special-
+    // cases the old column.
+    images: [...(full.images ?? [])],
+  }
+
+  // A stored zone that is no REV_ZONES value is the one that was typed into the
+  // `other` box. It moves back into the box and `other` is re-selected for it,
+  // so editing a trade shows the same two controls that wrote it — rather than
+  // a stray pill beside a closed box, or a closed box over a zone the trade is
+  // actually carrying.
+  const typedZone = [...state.rev_zone].find((v) => !REV_ZONES.includes(v)) ?? ''
+  if (typedZone) {
+    state.rev_zone.delete(typedZone)
+    state.rev_zone.add(REV_ZONE_OTHER)
   }
 
   /** Panel inputs, held outside the DOM so a model switch cannot erase them. */
   const fields = {
     day_type: full.day_type ?? '',
+    conviction: full.conviction ?? '',
+    rev_zone_other: typedZone,
     stack_ratio: full.stack_ratio ?? '',
     entry_delay_sec: full.entry_delay_sec ?? '',
     planned_stop: full.planned_stop ?? '',
@@ -472,6 +606,11 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
       const el = $(sel)
       if (el) fields[key] = el.value
     }
+    // The audit's conviction box, when that is the one on screen. TEXT_FIELDS
+    // names the panel's, and taking this one too is what makes the value
+    // survive a switch in either direction.
+    const audit = $(`#${CONVICTION_IDS.audit}`)
+    if (audit && !$('#w-discretion').hidden) fields.conviction = audit.value
     for (const [key, sel] of Object.entries(CHECK_FIELDS)) {
       const el = $(sel)
       if (el) fields[key] = el.checked
@@ -480,7 +619,17 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
 
   /** Re-renders the tag panel for the current model and rebinds what it owns. */
   function renderPanel() {
-    $('#tag-panel').innerHTML = panel(state.model, fields, state.mm_setup)
+    $('#tag-panel').innerHTML = panel(state, fields)
+
+    // SPM-R asks conviction in its own tag box and nothing else from the audit,
+    // so the block is hidden rather than removed: switching back to STDV must
+    // find the mech prices still holding what was typed into them.
+    const disc = $('#w-discretion')
+    disc.hidden = state.model === 'SPM-R'
+    // The audit's own conviction box is never re-rendered, so the value has to
+    // be written back into it — otherwise typing 7 under SPM-R and switching to
+    // STDV would show an empty box over a conviction the trade still carries.
+    if (!disc.hidden) $(`#${CONVICTION_IDS.audit}`).value = fields.conviction
 
     for (const el of overlay.querySelectorAll('.seg[data-model]')) {
       const on = el.dataset.model === state.model
@@ -492,24 +641,32 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
     $('#f-mm-setup')?.addEventListener('change', (e) => {
       state.mm_setup = e.target.value || null
     })
-
-    // Picking from the dropdown adds a target and resets the control, so the
-    // same list can be used again for a second one.
-    $('#f-target-add')?.addEventListener('change', (e) => {
-      if (addTarget(e.target.value)) syncPills()
-      e.target.value = ''
+    $('#f-tier')?.addEventListener('change', (e) => {
+      state.tier = e.target.value || null
     })
 
-    // Enter commits a custom target. Without this the form would submit-by-habit
-    // and the typed level would sit in the box unrecorded until save.
-    $('#f-target-custom')?.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return
-      e.preventDefault()
-      if (addTarget(e.target.value)) {
+    // Picking from a chooser's dropdown adds the value and resets the control,
+    // so the same list can be used again for a second one.
+    for (const sel of overlay.querySelectorAll('select[data-add]')) {
+      sel.addEventListener('change', (e) => {
+        if (addValue(e.target.dataset.add, e.target.value)) syncPills()
         e.target.value = ''
-        syncPills()
-      }
-    })
+      })
+    }
+
+    // Enter commits a hand-typed value. Without this the form would
+    // submit-by-habit and the typed level would sit in the box unrecorded
+    // until save.
+    for (const input of overlay.querySelectorAll('input[data-custom]')) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return
+        e.preventDefault()
+        if (addValue(e.target.dataset.custom, e.target.value)) {
+          e.target.value = ''
+          syncPills()
+        }
+      })
+    }
 
     syncPills()
   }
@@ -585,47 +742,104 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
     if (beReason) beReason.hidden = !$('#f-be-moved')?.checked
     const rules = $('#grp-rules-broken')
     if (rules) rules.hidden = state.rule_broken_any !== 'yes'
-    renderTargets()
+    // The free-text box a chooser opens for one named option — rev zone's
+    // `other`. Hidden until that option is picked, so the box can never hold a
+    // zone the trade does not claim.
+    for (const box of overlay.querySelectorAll('[data-other-for]')) {
+      box.hidden = !state[box.dataset.otherFor]?.has(REV_ZONE_OTHER)
+    }
+    renderChosen()
   }
 
   /**
-   * Chosen targets, as pills you can click to remove. The dropdown and the
-   * custom field both feed this set, so a trade can carry a suggestion and a
-   * hand-typed level at once.
+   * Every chooser's chosen values, as pills you can click to remove. The
+   * dropdown and the free-text box both feed the same Set, so a trade can
+   * carry a suggestion and a hand-typed level at once.
    */
-  function renderTargets() {
-    const box = $('#target-chosen')
-    if (!box) return
-    const chosen = [...state.target]
-    box.innerHTML = chosen.length
-      ? chosen
-          .map((v) => `<button type="button" class="pill on" data-drop-target="${esc(v)}">${esc(v)} ✕</button>`)
-          .join('')
-      : '<span class="muted-tag">None</span>'
+  function renderChosen() {
+    for (const box of overlay.querySelectorAll('[data-chosen]')) {
+      const key = box.dataset.chosen
+      const chosen = [...state[key]]
+      box.innerHTML = chosen.length
+        ? chosen
+            .map(
+              (v) =>
+                `<button type="button" class="pill on" data-drop-key="${esc(key)}" data-drop-val="${esc(v)}">${esc(v)} ✕</button>`
+            )
+            .join('')
+        : '<span class="muted-tag">None</span>'
+    }
   }
 
-  /** Adds a target if it is non-empty and not already chosen. */
-  function addTarget(value) {
+  /** Adds a value to a chooser's Set if it is non-empty and not already there. */
+  function addValue(key, value) {
     const v = String(value ?? '').trim()
-    if (v) state.target.add(v)
+    if (v) state[key].add(v)
     return !!v
   }
 
+  /**
+   * Resolves rev zone's `other` into the zone that was actually typed.
+   *
+   * The column stores zones, not a flag plus a note, so a named zone has to
+   * land in the array the same way a picked one does. Any previously typed
+   * zone is dropped first, or editing the box would leave both spellings on
+   * the trade. An empty box leaves the bare `other` standing: that reads as
+   * "a zone I did not name", which is true, and beats dropping the answer.
+   */
+  function commitTypedZone() {
+    for (const v of [...state.rev_zone]) {
+      if (!REV_ZONES.includes(v)) state.rev_zone.delete(v)
+    }
+    const typed = String(fields.rev_zone_other ?? '').trim()
+    if (typed && state.rev_zone.has(REV_ZONE_OTHER)) {
+      state.rev_zone.delete(REV_ZONE_OTHER)
+      state.rev_zone.add(typed)
+    }
+  }
+
+  const UPLOAD_ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
+
+  /**
+   * The screenshots, as a gallery with one slot per image and an upload tile
+   * while there is room for another.
+   *
+   * `data-i` on each remove button is the index, not the data URI: two shots of
+   * the same chart compress to the same bytes often enough that dropping "the
+   * one that matches" would take both.
+   */
   function renderUpload() {
     const wrap = $('#upload-wrap')
-    if (state.image) {
-      const kb = Math.round(dataUrlBytes(state.image) / 1024)
-      wrap.innerHTML = `<div class="preview"><img src="${state.image}" alt="Chart screenshot"><button type="button" class="ghost icon" data-act="clear-image" aria-label="Remove">${CLOSE_ICON}</button><span class="muted">${kb} KB</span></div>`
-    } else {
-      wrap.innerHTML = `<button type="button" class="upload" data-act="pick-image"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Click to upload, or paste a chart screenshot</button>`
+    const shots = state.images.map(
+      (src, i) =>
+        `<div class="preview"><img src="${src}" alt="Chart screenshot ${i + 1}"><button type="button" class="ghost icon" data-act="clear-image" data-i="${i}" aria-label="Remove screenshot ${i + 1}">${CLOSE_ICON}</button><span class="muted">${Math.round(dataUrlBytes(src) / 1024)} KB</span></div>`
+    )
+
+    if (state.images.length < MAX_IMAGES) {
+      shots.push(
+        `<button type="button" class="upload" data-act="pick-image">${UPLOAD_ICON}${
+          state.images.length
+            ? `Add another (${state.images.length}/${MAX_IMAGES})`
+            : 'Click to upload, or paste a chart screenshot'
+        }</button>`
+      )
     }
+
+    wrap.innerHTML = `<div class="shots${state.images.length ? ' has-shots' : ''}">${shots.join('')}</div>`
   }
 
   async function useImageFile(file) {
     if (!isImageFile(file)) return
+    // Refused rather than silently dropped, and refused before compressing, so
+    // a paste into a full gallery says why instead of appearing to do nothing.
+    if (state.images.length >= MAX_IMAGES) {
+      err.textContent = `${MAX_IMAGES} screenshots is the limit — remove one first`
+      return
+    }
     err.textContent = 'Compressing…'
     try {
-      state.image = await compressImage(file)
+      state.images.push(await compressImage(file))
       err.textContent = ''
       renderUpload()
     } catch (e) {
@@ -675,9 +889,12 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
       }
 
       harvest()
-      // A custom target left typed but never committed with Enter would
-      // otherwise be silently dropped on save.
-      addTarget($('#f-target-custom')?.value)
+      // A value left typed in a chooser's box but never committed with Enter
+      // would otherwise be silently dropped on save.
+      for (const input of overlay.querySelectorAll('input[data-custom]')) {
+        addValue(input.dataset.custom, input.value)
+      }
+      commitTypedZone()
 
       // A veto has no fill, so it has no P&L, risk, RR or status — and those are
       // zeroed here rather than merely hidden, so that flipping a mistyped trade
@@ -689,7 +906,14 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
       // model's tags behind on a row that no longer displays them.
       const stdv = state.model === 'STDV'
       const mm = state.model === 'MM'
-      const tagged = stdv || mm
+      const spm = state.model === 'SPM-R'
+      const tagged = stdv || mm || spm
+      // Which models render which shared control. Not every tagged model asks
+      // every shared question: SPM-R has no Regime or Day type panel, and MM
+      // has no Major regime or News one, so writing those from `tagged` would
+      // save an answer the trader was never shown.
+      const regimed = stdv || mm
+      const majored = stdv || spm
       const beMoved = tagged && fields.be_moved
 
       await upsertTrade({
@@ -705,10 +929,17 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
         rr: veto ? 0 : parseFloat($('#f-rr').value) || 0,
         thesis: $('#f-thesis').value.trim(),
         hindsight: $('#f-hindsight').value.trim(),
-        image: state.image,
+        // `image` stays the first screenshot so FlowJournal and anything else
+        // reading the old column still finds one. See mapping.js.
+        image: state.images[0] ?? null,
+        images: [...state.images],
         model: state.model,
         setup_type: stdv ? state.setup_type : null,
         mm_setup: mm ? state.mm_setup : null,
+        spm_grade: spm ? state.spm_grade : null,
+        tier: spm ? state.tier : null,
+        entry_trigger: spm ? [...state.entry_trigger] : [],
+        rev_zone: spm ? [...state.rev_zone] : [],
         band_touched: stdv ? [...state.band_touched] : [],
         away_stack: stdv && fields.away_stack,
         stack_ratio: stdv ? numOrNull(fields.stack_ratio) : null,
@@ -721,27 +952,36 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
         be_moved: beMoved,
         // FlowJournal drops the reason when BE wasn't moved; keep that.
         be_reason: beMoved ? state.be_reason : null,
-        regime: tagged ? state.regime : null,
+        regime: regimed ? state.regime : null,
         gamma_regime: tagged ? state.gamma_regime : null,
-        major_regime: stdv ? (state.major_regime == null ? null : state.major_regime === 'yes') : null,
+        major_regime: majored
+          ? state.major_regime == null
+            ? null
+            : state.major_regime === 'yes'
+          : null,
         day_type: stdv ? fields.day_type || null : null,
-        news_window: stdv && fields.news_window,
+        news_window: majored && fields.news_window,
         rule_broken: tagged ? [...state.rule_broken] : [],
         account_id: accountId,
 
-        // The discretion audit. Unlike the model tags above, none of this is
-        // cleared by the model switch or the kind switch: "would a mechanical
-        // run have fired" is a question about the decision, and it stays
-        // answered whether you took the trade under STDV, under MM, or not at
-        // all.
-        conviction: normaliseConviction($('#f-conviction').value),
-        mech_trigger: state.mech_trigger,
-        discretionary_act: [...state.discretionary_act],
-        mech_counterfactual_r: numOrNull($('#f-mech-cf-r').value),
-        mech_entry: numOrNull($('#f-mech-entry').value),
-        mech_stop: numOrNull($('#f-mech-stop').value),
-        mech_target: numOrNull($('#f-mech-target').value),
-        mech_exit: numOrNull($('#f-mech-exit').value),
+        // Conviction is asked on every model — in the audit block for STDV and
+        // MM, in the tag box for SPM-R — and `harvest` has already taken it
+        // from whichever box was on screen. It is not cleared by the model
+        // switch or the kind switch: how convinced you were is a question
+        // about the decision, not about the model.
+        conviction: normaliseConviction(fields.conviction),
+
+        // The rest of the audit. SPM-R never shows these, so they are written
+        // null rather than read off the hidden block — the same rule the model
+        // tags follow above, and for the same reason: a trade must not carry an
+        // answer the form did not put in front of you.
+        mech_trigger: spm ? null : state.mech_trigger,
+        discretionary_act: spm ? [] : [...state.discretionary_act],
+        mech_counterfactual_r: spm ? null : numOrNull($('#f-mech-cf-r').value),
+        mech_entry: spm ? null : numOrNull($('#f-mech-entry').value),
+        mech_stop: spm ? null : numOrNull($('#f-mech-stop').value),
+        mech_target: spm ? null : numOrNull($('#f-mech-target').value),
+        mech_exit: spm ? null : numOrNull($('#f-mech-exit').value),
       })
       // Only remembered once the save succeeded, and only when an account was
       // actually picked — clearing the field is not a new default.
@@ -765,8 +1005,8 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
 
     const p = e.target.closest('.pill')
     if (p) {
-      if (p.dataset.dropTarget) {
-        state.target.delete(p.dataset.dropTarget)
+      if (p.dataset.dropKey) {
+        state[p.dataset.dropKey].delete(p.dataset.dropVal)
       } else if (p.dataset.multi === 'discretionary_act') {
         toggleDiscretionaryAct(p.dataset.val)
       } else if (p.dataset.multi) {
@@ -794,7 +1034,7 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
     } else if (act === 'save') save(e.target.closest('[data-act]'))
     else if (act === 'pick-image') $('#f-image').click()
     else if (act === 'clear-image') {
-      state.image = null
+      state.images.splice(Number(e.target.closest('[data-act]').dataset.i), 1)
       renderUpload()
     } else if (act === 'calc-rr') {
       const pnl = parseFloat($('#f-pnl').value)
@@ -804,7 +1044,12 @@ export async function openTradeForm({ trade = {}, onSaved, scope = SCOPES.LIVE }
     }
   })
 
-  $('#f-image').addEventListener('change', (e) => useImageFile(e.target.files[0]))
+  $('#f-image').addEventListener('change', (e) => {
+    useImageFile(e.target.files[0])
+    // Cleared so picking the same file again still fires a change event, which
+    // it would not if the input kept holding it.
+    e.target.value = ''
+  })
   document.addEventListener('keydown', onKey)
   document.addEventListener('paste', onPaste)
 

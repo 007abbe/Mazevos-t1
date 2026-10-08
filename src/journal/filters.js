@@ -10,7 +10,8 @@
  * Pure, so the combining rules are testable without a DOM.
  */
 
-import { tradeKind } from '../domain/veto-vocab.js'
+import { tradeKind, KINDS } from '../domain/veto-vocab.js'
+import { MODELS, DEFAULT_MODEL } from '../domain/trade-vocab.js'
 
 /** Options for the sort dropdown, in display order. */
 export const SORTS = [
@@ -22,6 +23,13 @@ export const SORTS = [
 
 export const STATUSES = ['TP', 'SL', 'BE', 'TP1+BE', 'Open']
 export const DIRECTIONS = ['Long', 'Short']
+
+/**
+ * A trade's model for filtering. `model` is null on every row logged before the
+ * column existed, and those are all STDV — so filtering for STDV has to find
+ * them, or the oldest half of the journal would vanish from its own model.
+ */
+export const tradeModel = (t) => t?.model || DEFAULT_MODEL
 
 /**
  * The account dropdown's value for "trades with no account", as distinct from
@@ -44,6 +52,7 @@ export const NO_FILTERS = {
   search: '',
   status: '',
   direction: '',
+  model: '',
   account: '',
   // '' is both kinds. Not defaulted to 'trade': a veto you cannot see is a veto
   // you stop logging.
@@ -118,7 +127,10 @@ function matchesSearch(trade, needle) {
  * @returns {object[]} a new array; the input is not mutated
  */
 export function applyFilters(trades, filters = {}) {
-  const { search, status, direction, account, kind, sort } = { ...NO_FILTERS, ...filters }
+  const { search, status, direction, model, account, kind, sort } = {
+    ...NO_FILTERS,
+    ...filters,
+  }
   const needle = search.trim().toLowerCase()
 
   const filtered = byAccount(trades, account).filter((t) => {
@@ -128,10 +140,73 @@ export function applyFilters(trades, filters = {}) {
     if (kind && tradeKind(t) !== kind) return false
     if (status && t.status !== status) return false
     if (direction && t.type !== direction) return false
+    if (model && tradeModel(t) !== model) return false
     if (needle && !matchesSearch(t, needle)) return false
     return true
   })
 
   // sort() mutates, so this sorts the copy filter() just produced.
   return filtered.sort(COMPARATORS[sort] ?? COMPARATORS.newest)
+}
+
+/**
+ * Which fields narrow the table, in the order the filter bar shows them.
+ *
+ * `sort` is deliberately absent: an ordering is not a narrowing. Clearing the
+ * filters leaves it alone, and a journal sorted P&L-low-to-high does not count
+ * as filtered — otherwise the Clear button would sit lit on a table showing
+ * every row, which teaches you to ignore it.
+ */
+export const FILTER_KEYS = ['search', 'kind', 'status', 'direction', 'model', 'account']
+
+/** True when anything is narrowing the table. Drives the Clear button. */
+export function isFiltered(filters = {}) {
+  const active = { ...NO_FILTERS, ...filters }
+  return FILTER_KEYS.some((key) => !!active[key])
+}
+
+/** Clears every narrowing field, keeping the sort. */
+export const clearedFilters = (filters = {}) => ({
+  ...NO_FILTERS,
+  sort: { ...NO_FILTERS, ...filters }.sort,
+})
+
+/**
+ * The legal values of each dropdown, '' meaning "no narrowing" throughout.
+ * `account` is absent on purpose — which accounts exist is not knowable here,
+ * and the caller validates it against the ones it just loaded.
+ */
+const ALLOWED = {
+  kind: ['', ...KINDS],
+  status: ['', ...STATUSES],
+  direction: ['', ...DIRECTIONS],
+  model: ['', ...MODELS],
+  sort: SORTS.map((s) => s.value),
+}
+
+/** A free-typed search is not worth restoring past this, and caps what a
+ *  corrupted store can push back into the box. */
+const MAX_SEARCH = 200
+
+/**
+ * Makes an untrusted filter set safe to apply.
+ *
+ * Filters are remembered across sessions now, so a set can outlive the
+ * vocabulary it was written against — a status that was renamed, a model that
+ * was removed, a hand-edited localStorage value. Applying one of those narrows
+ * the table to nothing, and an empty journal reads as lost data rather than as
+ * a stale filter. Anything unrecognised therefore falls back to "no narrowing"
+ * rather than being passed through.
+ */
+export function sanitiseFilters(stored = {}) {
+  const out = { ...NO_FILTERS }
+  if (!stored || typeof stored !== 'object') return out
+
+  if (typeof stored.search === 'string') out.search = stored.search.slice(0, MAX_SEARCH)
+
+  for (const [key, allowed] of Object.entries(ALLOWED)) {
+    if (allowed.includes(stored[key])) out[key] = stored[key]
+  }
+
+  return out
 }

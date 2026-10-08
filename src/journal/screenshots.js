@@ -7,6 +7,10 @@
  * Keeping that format means FlowJournal renders Mazevo's screenshots and vice
  * versa, with no schema change and no backfill.
  *
+ * A trade now carries up to MAX_IMAGES of them, in `trades.images`, and the
+ * first one is still written to `image` as well — so the format above stays
+ * exactly as true as it was, and nothing that reads the old column broke.
+ *
  * What changes is size. FlowJournal stores the file exactly as dropped —
  * a 1 MB PNG becomes ~1.37 MB of base64 inside the row. Here the image is
  * downscaled and re-encoded to JPEG first, which typically lands the same
@@ -16,6 +20,13 @@
  * deferred: it changes the column's meaning and needs a production backfill
  * plus a lockstep FlowJournal update.
  */
+
+/**
+ * Screenshots per trade. Four is the practical ceiling: at MAX_BYTES each that
+ * is ~1.6MB of base64 on the row, which Postgres stores out of line and which
+ * neither query that lists trades ever selects.
+ */
+export const MAX_IMAGES = 4
 
 /** Longest edge, in pixels, after downscaling. Chart detail survives this. */
 export const MAX_DIMENSION = 1600
