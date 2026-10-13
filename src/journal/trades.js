@@ -20,11 +20,14 @@ import { snapshotFor } from '../agents/reggie/mac/snapshots.js'
  * `thesis` is the one heavy field that has to travel with the list: the
  * journal's search box filters on it client-side, over the trades already
  * loaded. Fetching it per-row on keystroke would be a query per character.
+ *
+ * `entry_price` and `actual_exit` feed the tick collector (src/domain/ticks.js),
+ * which the journal tile, Statistics and the account panel all read.
  */
 const LIST_COLUMNS = `
   id, num, date, type, status, pnl, risk, rr, thesis, model, setup_type, mm_setup,
   spm_grade, regime, day_type, account_id, kind, veto_outcome, conviction,
-  mech_trigger, mech_counterfactual_r
+  mech_trigger, mech_counterfactual_r, entry_price, actual_exit
 `
 
 /**

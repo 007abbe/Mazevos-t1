@@ -172,12 +172,34 @@ Vanilla JS + Vite. Supabase (auth, Postgres, Edge Functions). Deployed to GitHub
   of the decision, not of the model, so SPM-R keeps it in its own tag box. Two
   ids (`CONVICTION_IDS`), because the hidden audit is still in the DOM and one
   shared id would put two conviction boxes on the page.
-- The journal's discretion-delta tile (`src/journal/index.js:36`) therefore
-  keeps accruing from STDV and MM only. SPM-R rows are absent from it by
-  design, not by omission.
+- The discretion delta (Statistics page) therefore keeps accruing from STDV
+  and MM only. SPM-R rows are absent from it by design, not by omission. The
+  journal header no longer carries it — that slot is the Ticks tile.
 - A trade carries up to 4 screenshots in `images`; `image` still holds the
   first, so FlowJournal and every pre-`images` row still resolve one and
   nothing needed backfilling. Neither query that lists trades selects either.
+
+## Ticks
+- The collector lives in `src/domain/ticks.js`: signed by direction from
+  `entry_price` and `actual_exit`, 0.25 per tick (everything is NQ), per trade
+  not per contract. `x` is excluded by model name, vetoes and open trades by
+  having no fill. Shown as the journal's Ticks tile (follows the account
+  filter), a Statistics panel with all-time / month / week / custom, and on
+  each account.
+
+## Account goals
+- Rules live in nullable columns on `accounts` (migration
+  `20261013000000_account_goals.sql`); every progress number is derived in
+  `accountProgress` (`src/domain/account-goals.js`) from the account's trades,
+  never stored. Blank is null, never 0 — a 0 daily limit would breach on day one.
+- Measured on realised P&L by trading day. Firms count open P&L too, so the
+  panel can only breach later than the firm does, never earlier — it says so.
+- Consistency raises the target (best day ÷ pct) rather than failing, which is
+  how both Lucid and Topstep word it. A hand-set `status` outranks the computed
+  state on the badge.
+- `listAccounts` falls back to the base columns on Postgres 42703, so the app
+  still loads if the code ships before the migration runs; goals stay hidden.
+- Presets (`PROP_PRESETS`) only fill the form. Firms change rules often.
 
 ## Journal filters
 - The filter bar is **sticky** — it survives the remount a save causes and it

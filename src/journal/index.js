@@ -11,7 +11,7 @@ import { rememberedFilters, rememberFilters, forgetFilters } from './filter-memo
 import { backtestAccountIds } from '../domain/account-vocab.js'
 import { modelSetup, MODELS } from '../domain/trade-vocab.js'
 import { isVeto, VETO_OUTCOME_LABELS } from '../domain/veto-vocab.js'
-import { discretionDelta } from '../domain/discretion.js'
+import { tickTally, fmtTicks } from '../domain/ticks.js'
 import { publishSummary } from '../lib/summary.js'
 import { directionBadge, statusBadge } from '../lib/trade-badges.js'
 import { accountName } from '../lib/account-badges.js'
@@ -23,32 +23,32 @@ const statTile = (label, value, cls = '', title = '') =>
    </div>`
 
 /**
- * The number this whole discretion audit exists to produce: mean actual R minus
- * mean mechanical R, over the entries where a strict mechanical run would have
- * fired. Positive means your judgement earned its keep.
- *
- * The sample size rides in the label rather than a tooltip, because a +0.8R
- * delta over three entries and one over forty are different claims and the tile
- * has to say which it is. With nothing to compare it stays an em dash — a 0.00
- * would read as "your discretion is exactly neutral", which is a finding, not
- * an absence of one.
+ * The tick collector: every counted trade's ticks for or against, summed. See
+ * src/domain/ticks.js for what counts. The sample rides in the label for the
+ * same reason the old discretion tile's did — +400 over 3 trades and over 40
+ * are different claims.
  */
-function discretionTile(rows) {
-  const { delta, n, tagged, avgActualR, avgMechR } = discretionDelta(rows)
+function ticksTile(rows) {
+  const { net, gained, lost, n, suspect } = tickTally(rows)
 
-  if (delta === null) {
-    const hint = tagged
-      ? `${tagged} entr${tagged === 1 ? 'y' : 'ies'} answered “mech trigger: yes”, but none recorded a counterfactual R to compare against.`
-      : 'Answer “mech trigger: yes” and record a counterfactual R on an entry to start measuring this.'
-    return statTile('Discretion Δ', '—', 'muted-stat', hint)
+  // A held-out row is named on the tile itself, not just in the tooltip — it
+  // is a typo waiting to be fixed, and the fix is opening that trade.
+  const held = suspect.length
+    ? ` Left out for an impossible distance (check the prices): ${suspect
+        .map((t) => `${tradeLabel(t)} ${t.entry_price} → ${t.actual_exit}`)
+        .join(', ')}.`
+    : ''
+  const flag = suspect.length ? ` <span class="stat-n stat-warn">⚠ ${suspect.length}</span>` : ''
+
+  if (!n) {
+    return statTile(`Ticks${flag}`, '—', 'muted-stat', `Record an entry price and an exit on a trade to start collecting ticks.${held}`)
   }
 
-  const sign = delta > 0 ? '+' : ''
   return statTile(
-    `Discretion Δ <span class="stat-n">n=${n}</span>`,
-    `${sign}${delta.toFixed(2)}R`,
-    delta > 0 ? 'ok' : delta < 0 ? 'bad' : '',
-    `You averaged ${avgActualR.toFixed(2)}R where a mechanical run would have averaged ${avgMechR.toFixed(2)}R, over ${n} entr${n === 1 ? 'y' : 'ies'}.`
+    `Ticks <span class="stat-n">n=${n}</span>${flag}`,
+    fmtTicks(net),
+    net > 0 ? 'ok' : net < 0 ? 'bad' : '',
+    `${fmtTicks(gained)} collected, ${fmtTicks(lost)} given back, over ${n} trade${n === 1 ? '' : 's'}. x trades and vetoes don't count.${held}`
   )
 }
 
@@ -62,7 +62,7 @@ function renderStats(stats, rows) {
       ${statTile('Avg win', fmtMoney(stats.avgWin), 'ok')}
       ${statTile('Avg loss', fmtMoney(-stats.avgLoss), 'bad')}
       ${statTile('Avg R', fmtNum(stats.avgR))}
-      ${discretionTile(rows)}
+      ${ticksTile(rows)}
       ${
         // Only once there is one. An always-on "Vetoes 0" tile would take a slot
         // from a number that is doing work.
@@ -263,8 +263,8 @@ export async function renderJournal(el, { header, navigate, scope = SCOPES.LIVE 
 
   // The tiles and the sidebar answer to the account alone, not to the search
   // box or the status filter — see `byAccount` in filters.js. Vetoes stay in
-  // this set: `computeStats` drops them from every P&L number itself, and the
-  // discretion delta needs them.
+  // this set: `computeStats` drops them from every P&L number itself, and
+  // `tickTally` skips them too.
   const summarise = () => byAccount(trades, filters.account)
 
   // The shell owns the topbar; the view owns what goes in it. Clearing first

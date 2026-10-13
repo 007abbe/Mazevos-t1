@@ -1,7 +1,7 @@
 import { defineAgent } from '../agents/contract.js'
 import { listTrades } from '../journal/trades.js'
 import { listAccounts } from '../journal/accounts.js'
-import { byScope, SCOPES } from '../journal/filters.js'
+import { byScope, SCOPES, tradeLabel } from '../journal/filters.js'
 import { backtestAccountIds } from '../domain/account-vocab.js'
 import { isRealTrade } from '../domain/veto-vocab.js'
 import { computeStats, fmtMoney, fmtNum } from '../journal/stats.js'
@@ -9,6 +9,7 @@ import { computeStatistics } from './compute.js'
 import { publishSummary } from '../lib/summary.js'
 import { directionBadge, statusBadge } from '../lib/trade-badges.js'
 import { esc, explainFailure } from '../lib/ui-text.js'
+import { tickTally, fmtTicks, periodRange, inRange, TICK_PERIODS } from '../domain/ticks.js'
 
 /**
  * Performance overview. Reads the same `listTrades` the journal does and does
@@ -216,6 +217,105 @@ function renderPoints({ points }) {
   `
 }
 
+/*
+ * ---- Ticks ----
+ *
+ * The one interactive block on the page, so it lives outside BLOCKS: it is
+ * rendered into its own section and repaints alone when the period changes,
+ * rather than recomputing every panel for a change only it reads.
+ */
+
+const TICKS_PERIOD_KEY = 'mazevo.stats.ticksPeriod'
+
+const readPeriod = () => {
+  try {
+    const v = localStorage.getItem(TICKS_PERIOD_KEY)
+    return TICK_PERIODS.some((p) => p.value === v) ? v : 'all'
+  } catch {
+    return 'all'
+  }
+}
+
+const writePeriod = (v) => {
+  try {
+    localStorage.setItem(TICKS_PERIOD_KEY, v)
+  } catch {
+    // A forgotten period just means All-time next visit.
+  }
+}
+
+function renderTicks(trades, period, custom) {
+  const range = periodRange(period, new Date(), custom)
+  const { net, gained, lost, n, best, worst, suspect } = tickTally(inRange(trades, range))
+  const t = (v) => (v === null || v === 0 ? 'neu' : v > 0 ? 'pos' : 'neg')
+
+  const segs = TICK_PERIODS.map(
+    (p) => `<button type="button" class="seg${p.value === period ? ' on' : ''}" data-period="${p.value}">${p.label}</button>`
+  ).join('')
+
+  const customRow =
+    period === 'custom'
+      ? `<div class="ticks-range">
+          <label>From <input type="date" id="ticks-from" value="${esc(custom.from ?? '')}"></label>
+          <label>To <input type="date" id="ticks-to" value="${esc(custom.to ?? '')}"></label>
+        </div>`
+      : ''
+
+  return `
+    <div class="ticks-head">
+      <h2 class="panel-title">Ticks</h2>
+      <div class="seg-row" role="group" aria-label="Tick period">${segs}</div>
+    </div>
+    ${customRow}
+    ${
+      n
+        ? `<div class="stats-grid ticks-grid">
+            ${statCard(`Net ticks ${sample(n)}`, fmtTicks(net), t(net))}
+            ${statCard('Collected', fmtTicks(gained), 'pos')}
+            ${statCard('Given back', fmtTicks(lost), lost ? 'neg' : 'neu')}
+            ${statCard('Best / worst', `${fmtTicks(best)} / ${fmtTicks(worst)}`)}
+          </div>`
+        : `<p class="muted">No ticks in this period. A trade counts once it has an entry price and an exit.</p>`
+    }
+    ${
+      suspect.length
+        ? `<p class="audit-explain ticks-suspect">⚠ Left out — entry to exit is over 1,000 pts, so a price is
+            probably mistyped: ${suspect
+              .map((t) => `<b>${esc(tradeLabel(t))}</b> ${esc(String(t.entry_price))} → ${esc(String(t.actual_exit))}`)
+              .join(', ')}. Fix the trade and it counts.</p>`
+        : ''
+    }
+    <p class="muted audit-explain">Ticks for or against from entry to exit, one NQ tick = 0.25 pts.
+      Per trade, not per contract. x trades and vetoes don't count.</p>
+  `
+}
+
+function mountTicks(section, trades) {
+  let period = readPeriod()
+  const custom = { from: '', to: '' }
+
+  const paint = () => {
+    section.innerHTML = renderTicks(trades, period, custom)
+  }
+
+  section.addEventListener('click', (e) => {
+    const p = e.target.closest('[data-period]')?.dataset.period
+    if (!p || p === period) return
+    period = p
+    writePeriod(p)
+    paint()
+  })
+
+  section.addEventListener('change', (e) => {
+    if (e.target.id === 'ticks-from') custom.from = e.target.value
+    else if (e.target.id === 'ticks-to') custom.to = e.target.value
+    else return
+    paint()
+  })
+
+  paint()
+}
+
 const BLOCKS = [renderTotals, renderPairs, renderChart, renderPoints, renderDiscretion, renderBreakdowns]
 
 export const statistics = defineAgent({
@@ -253,5 +353,12 @@ export const statistics = defineAgent({
     // is a P&L block and gets executed trades only.
     const stats = computeStatistics(trades, live)
     el.innerHTML = BLOCKS.map((render) => render(stats)).join('')
+
+    // Directly under the totals: it is the headline number of the page's one
+    // game, and burying it under the breakdowns would hide it.
+    const ticks = document.createElement('section')
+    ticks.className = 'panel ticks-panel'
+    el.children[0].after(ticks)
+    mountTicks(ticks, trades)
   },
 })

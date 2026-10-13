@@ -9,15 +9,45 @@ import { getUser } from '../lib/auth.js'
  * is not null and the insert policy checks it.
  */
 
-const COLUMNS = 'id, user_id, type, name, note, created_at'
+const BASE_COLUMNS = 'id, user_id, type, name, note, created_at'
 
-/** DB row -> app account. */
+/** The rule columns from the account_goals migration. */
+const GOAL_COLUMNS =
+  'firm, account_size, profit_target, max_drawdown, drawdown_type, drawdown_lock, ' +
+  'daily_loss_limit, consistency_pct, min_days, monthly_goal, status'
+
+const COLUMNS = `${BASE_COLUMNS}, ${GOAL_COLUMNS}`
+
+/**
+ * Postgres "undefined column". Seen only between deploying this code and
+ * running the account_goals migration — the journal must keep loading in that
+ * window, so the read falls back to the base columns and goals stay off.
+ */
+const isMissingColumn = (error) => error?.code === '42703'
+
+/** False until a read has confirmed the goal columns exist. */
+export let goalsAvailable = true
+
+const goalNum = (v) => (v === null || v === undefined ? null : Number(v))
+
+/** DB row -> app account. Numeric columns arrive from Postgres as strings. */
 const fromRow = (r) => ({
   id: r.id,
   type: r.type,
   name: r.name,
   note: r.note || '',
   createdAt: r.created_at,
+  firm: r.firm ?? null,
+  account_size: goalNum(r.account_size),
+  profit_target: goalNum(r.profit_target),
+  max_drawdown: goalNum(r.max_drawdown),
+  drawdown_type: r.drawdown_type ?? null,
+  drawdown_lock: goalNum(r.drawdown_lock),
+  daily_loss_limit: goalNum(r.daily_loss_limit),
+  consistency_pct: goalNum(r.consistency_pct),
+  min_days: goalNum(r.min_days),
+  monthly_goal: goalNum(r.monthly_goal),
+  status: r.status ?? null,
 })
 
 /**
@@ -25,13 +55,35 @@ const fromRow = (r) => ({
  * trader thinks of them in, and it keeps the dropdown from reshuffling.
  */
 export async function listAccounts() {
-  const { data, error } = await supabase
-    .from('accounts')
-    .select(COLUMNS)
-    .order('created_at', { ascending: true })
+  const query = (columns) =>
+    supabase.from('accounts').select(columns).order('created_at', { ascending: true })
+
+  let { data, error } = await query(COLUMNS)
+  if (isMissingColumn(error)) {
+    goalsAvailable = false
+    ;({ data, error } = await query(BASE_COLUMNS))
+  } else if (!error) {
+    goalsAvailable = true
+  }
 
   if (error) throw error
   return (data ?? []).map(fromRow)
+}
+
+/**
+ * Writes an account's rules and status. `goals` is already normalised by
+ * `normaliseGoals` — blanks are null, so clearing a field clears the rule.
+ */
+export async function updateAccountGoals(id, goals) {
+  const { data, error } = await supabase
+    .from('accounts')
+    .update(goals)
+    .eq('id', id)
+    .select(COLUMNS)
+    .single()
+
+  if (error) throw error
+  return fromRow(data)
 }
 
 export async function createAccount({ name, type, note }) {
@@ -46,7 +98,7 @@ export async function createAccount({ name, type, note }) {
       type,
       note: String(note ?? '').trim() || null,
     })
-    .select(COLUMNS)
+    .select(goalsAvailable ? COLUMNS : BASE_COLUMNS)
     .single()
 
   if (error) throw error

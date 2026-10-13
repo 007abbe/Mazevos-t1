@@ -2,26 +2,36 @@ import {
   ACCOUNT_TYPES, DEFAULT_ACCOUNT_TYPE, ACCOUNT_NAME_MAX, ACCOUNT_NOTE_MAX, validateAccount,
   BACKTEST_ACCOUNT_TYPE, backtestAccountIds,
 } from '../domain/account-vocab.js'
+import {
+  accountProgress, accountBadgeState, BADGE_LABELS, hasGoals, normaliseGoals, validateGoals,
+  PROP_PRESETS, DRAWDOWN_TYPES, ACCOUNT_STATUSES, STATUS_LABELS,
+} from '../domain/account-goals.js'
+import { tickTally, fmtTicks, isoDay } from '../domain/ticks.js'
 import { isRealTrade, isVeto } from '../domain/veto-vocab.js'
 import {
   listAccounts, createAccount, deleteAccount, countTradesByAccount, assignTradesToAccount,
+  updateAccountGoals, goalsAvailable,
 } from './accounts.js'
 import { listTrades } from './trades.js'
 import { tradeLabel, SCOPES } from './filters.js'
 import { accountTypeClass, accountTypeBadge, accountName } from '../lib/account-badges.js'
-import { fmtMoney } from './stats.js'
+import { fmtMoney, fmtNum, computeStats } from './stats.js'
 import { esc, explainFailure } from '../lib/ui-text.js'
 
 /**
- * The Accounts modal: list, create, inspect, assign, delete.
+ * The Accounts modal: list, create, inspect, set goals, assign, delete.
  *
- * One overlay with four modes rather than four modals. They are steps in the
- * same task — you open Accounts to look at an account, and deleting or
- * assigning is something you decide *while looking at it* — so stacking a
- * second overlay on top would bury the context the decision needs.
+ * One overlay with five modes rather than five modals. They are steps in the
+ * same task — you open Accounts to look at an account, and deleting, assigning
+ * or changing its rules is something you decide *while looking at it* — so
+ * stacking a second overlay on top would bury the context the decision needs.
  *
  * Mirrors the trade form's shape (openTradeForm in form.js): a detail view you
  * reach by clicking a row, with the destructive action at the bottom left.
+ *
+ * Every number on the detail view is derived from the trades on the account —
+ * see accountProgress in src/domain/account-goals.js. The account row stores
+ * only the rules.
  */
 
 const CLOSE_ICON =
@@ -31,6 +41,7 @@ const TITLES = {
   list: 'Accounts',
   create: 'New account',
   detail: 'Account',
+  goals: 'Goals & rules',
   assign: 'Assign trades',
 }
 
@@ -50,7 +61,35 @@ const typePill = (type, selected) =>
   `<button type="button" class="pill acct-pill ${accountTypeClass(type)}${type === selected ? ' on' : ''}"
            data-type="${esc(type)}" aria-pressed="${type === selected}">${esc(type)}</button>`
 
-function renderList(accounts, counts, vetoCounts, backtest) {
+/** Signed whole dollars — a gain or a loss. */
+const usd = (n) => (n === null || n === undefined ? '—' : fmtMoney(n))
+
+/** Unsigned whole dollars, for balances and limits that are never "a gain". */
+const plain = (n) => (n === null || n === undefined ? '—' : `$${Math.round(n).toLocaleString('en-US')}`)
+
+const BADGE_CLASSES = {
+  active: 'badge-open',
+  'target-hit': 'badge-tp',
+  passed: 'badge-tp',
+  breached: 'badge-sl',
+  failed: 'badge-sl',
+  retired: 'badge-be',
+}
+
+const stateBadge = (state) =>
+  `<span class="badge ${BADGE_CLASSES[state] ?? 'badge-be'}">${esc(BADGE_LABELS[state] ?? state)}</span>`
+
+/** A thin meter, 0..1. */
+const meter = (value, tone) =>
+  `<span class="meter"><span class="meter-fill ${tone}" style="width:${Math.round(Math.max(0, Math.min(1, value ?? 0)) * 100)}%"></span></span>`
+
+/** Green until half the allowance is gone, amber to three quarters, then red. */
+const usageTone = (used) => (used >= 0.75 ? 'bad' : used >= 0.5 ? 'warn' : 'ok')
+
+/** Whether an account has anything a status badge would say. */
+const showsState = (account) => hasGoals(account) || !!account.status
+
+function renderList(accounts, counts, vetoCounts, backtest, progressFor) {
   if (!accounts.length) {
     return backtest
       ? `<p class="muted">No backtest accounts yet. Create one — it behaves exactly like a real
@@ -63,21 +102,40 @@ function renderList(accounts, counts, vetoCounts, backtest) {
   // here. Backtest entries always have an account; the form refuses otherwise.
   const unassigned = backtest ? 0 : (counts.get(null) ?? 0)
 
-  return `
-    <div class="acct-list">
-      ${accounts
-        .map(
-          (a) => `
-        <button type="button" class="acct-row" data-account="${esc(a.id)}">
+  const row = (a) => {
+    const p = progressFor(a)
+    // Dimmed, not reordered: the list keeps creation order so nothing reshuffles.
+    const dim = a.status === 'retired' || a.status === 'failed'
+    const meters = [
+      p.targetProgress !== null &&
+        `<span class="acct-row-meter"><span>Target ${Math.round(p.targetProgress * 100)}%</span>${meter(p.targetProgress, 'ok')}</span>`,
+      p.drawdownUsed !== null &&
+        `<span class="acct-row-meter"><span>Buffer ${plain(p.buffer)}</span>${meter(p.drawdownUsed, usageTone(p.drawdownUsed))}</span>`,
+    ].filter(Boolean)
+
+    return `
+      <button type="button" class="acct-row acct-card${dim ? ' dim' : ''}" data-account="${esc(a.id)}">
+        <span class="acct-row-top">
           <span class="acct-row-main">
             ${accountName(a)}
             ${accountTypeBadge(a.type)}
+            ${showsState(a) ? stateBadge(accountBadgeState(a, p)) : ''}
           </span>
-          <span class="acct-row-meta">${entryCount(counts.get(a.id) ?? 0, vetoCounts.get(a.id) ?? 0)}</span>
-        </button>`
-        )
-        .join('')}
-    </div>
+          <span class="acct-row-pnl ${p.net >= 0 ? 'pnl-pos' : 'pnl-neg'}">${usd(p.net)}</span>
+        </span>
+        <span class="acct-row-meta">${[
+          a.firm ? esc(a.firm) : '',
+          p.balance === null ? '' : plain(p.balance),
+          entryCount(counts.get(a.id) ?? 0, vetoCounts.get(a.id) ?? 0),
+        ]
+          .filter(Boolean)
+          .join(' · ')}</span>
+        ${meters.length ? `<span class="acct-row-meters">${meters.join('')}</span>` : ''}
+      </button>`
+  }
+
+  return `
+    <div class="acct-list">${accounts.map(row).join('')}</div>
     ${
       unassigned
         ? `<p class="muted acct-hint">${tradeCount(unassigned)} not on any account —
@@ -102,23 +160,223 @@ const renderCreate = (draft) => `
     </label>
   </div>`
 
-const renderDetail = (account, count, stats) => `
+/**
+ * Balance over trading days, with the drawdown floor dashed beneath it and the
+ * starting balance as a faint rule. Inline SVG — a chart library for one line
+ * would outweigh the panel.
+ */
+function equityChart(curve, size) {
+  if (curve.length < 2) return ''
+  const W = 600
+  const H = 120
+  const hasFloor = curve[0].floor !== null
+  const values = curve.flatMap((p) => (hasFloor ? [p.balance, p.floor] : [p.balance])).concat(size)
+  const lo = Math.min(...values)
+  const span = Math.max(...values) - lo || 1
+  const x = (i) => ((i / (curve.length - 1)) * W).toFixed(1)
+  const y = (v) => (H - 6 - ((v - lo) / span) * (H - 12)).toFixed(1)
+  const line = (key) => curve.map((p, i) => `${x(i)},${y(p[key])}`).join(' ')
+  const last = curve[curve.length - 1]
+
+  return `
+    <div class="acct-chart">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+           aria-label="Balance ${plain(last.balance)} over ${curve.length} trading days">
+        <line class="eq-start" x1="0" x2="${W}" y1="${y(size)}" y2="${y(size)}"/>
+        ${hasFloor ? `<polyline class="eq-floor" points="${line('floor')}"/>` : ''}
+        <polyline class="eq-line ${last.balance >= size ? 'up' : 'down'}" points="${line('balance')}"/>
+      </svg>
+      <div class="acct-chart-legend">
+        <span><i class="lg-line"></i>Balance</span>
+        ${hasFloor ? '<span><i class="lg-floor"></i>Drawdown floor</span>' : ''}
+        <span><i class="lg-start"></i>Start</span>
+      </div>
+    </div>`
+}
+
+/** One rule: a pass/fail dot, a meter, and the numbers behind it. */
+const ruleRow = (label, value, tone, detail, ok) => `
+  <div class="rule-row">
+    <span class="rule-label"><i class="rule-dot ${ok ? 'ok' : 'bad'}"></i>${label}</span>
+    ${value === null ? '<span></span>' : meter(value, tone)}
+    <span class="rule-detail">${detail}</span>
+  </div>`
+
+const warn = (text) => `<span class="rule-warn">${text}</span>`
+
+function renderRules(account, p) {
+  const rows = []
+
+  if (p.requiredTarget !== null) {
+    const raised = p.requiredTarget > p.target
+    rows.push(
+      ruleRow(
+        'Profit target',
+        p.targetProgress,
+        'ok',
+        `${usd(p.net)} of ${plain(p.requiredTarget)}${raised ? ` · ${warn(`raised from ${plain(p.target)} by consistency`)}` : ''} · ${
+          p.toTarget ? `${plain(p.toTarget)} to go` : 'reached'
+        }`,
+        p.toTarget === 0
+      )
+    )
+  }
+
+  if (p.floor !== null) {
+    const kind = DRAWDOWN_TYPES.find((d) => d.value === (account.drawdown_type || 'eod'))?.label ?? ''
+    rows.push(
+      ruleRow(
+        'Max drawdown',
+        p.drawdownUsed,
+        usageTone(p.drawdownUsed ?? 0),
+        `${plain(p.buffer)} above floor ${plain(p.floor)} · ${esc(kind)}${p.floorLocked ? ' · locked' : ''}${
+          p.breachedOn ? ` · ${warn(`breached ${esc(p.breachedOn)}`)}` : ''
+        }`,
+        !p.breachedOn
+      )
+    )
+  }
+
+  if (p.dailyLossLimit) {
+    const worst = p.worstDay !== null && p.worstDay < 0 ? -p.worstDay : 0
+    const hits = p.dllHits.length
+    rows.push(
+      ruleRow(
+        'Daily loss limit',
+        worst / p.dailyLossLimit,
+        usageTone(worst / p.dailyLossLimit),
+        `worst day ${usd(p.worstDay)} of ${plain(p.dailyLossLimit)}${hits ? ` · ${warn(`hit on ${hits} day${hits === 1 ? '' : 's'}`)}` : ''}`,
+        !hits
+      )
+    )
+  }
+
+  if (p.consistencyPct) {
+    rows.push(
+      ruleRow(
+        'Consistency',
+        p.consistency === null ? null : p.consistency / 100,
+        p.consistent ? 'ok' : 'warn',
+        p.consistency === null
+          ? `best day ≤ ${p.consistencyPct}% of profit · no profit yet`
+          : `best day ${usd(p.bestDay)} is ${Math.round(p.consistency)}% of profit · limit ${p.consistencyPct}%`,
+        p.consistent
+      )
+    )
+  }
+
+  if (p.minDays) {
+    rows.push(ruleRow('Trading days', p.tradingDays / p.minDays, 'ok', `${p.tradingDays} of ${p.minDays}`, p.daysMet))
+  }
+
+  if (p.monthlyGoal) {
+    const month = p.monthPnl ?? 0
+    rows.push(
+      ruleRow('Monthly goal', month / p.monthlyGoal, 'ok', `${usd(month)} of ${plain(p.monthlyGoal)} this month`, month >= p.monthlyGoal)
+    )
+  }
+
+  if (!rows.length) return ''
+  return `
+    <section class="acct-section">
+      <h4 class="acct-section-title">Goals &amp; rules</h4>
+      ${rows.join('')}
+      ${
+        p.floor !== null
+          ? `<p class="muted acct-hint">Measured on closed trades by trading day. Your firm also counts
+             open P&amp;L, so a live account can breach before this panel says so.</p>`
+          : ''
+      }
+    </section>`
+}
+
+function renderDetail(account, count, own, p) {
+  const stats = computeStats(own)
+  const ticks = tickTally(own)
+  const tone = (n) => (n === null || n === undefined ? '' : n > 0 ? 'ok' : n < 0 ? 'bad' : '')
+  const fact = (label, value, cls = '') =>
+    `<div class="acct-fact"><span class="stat-label">${label}</span><b class="${cls}">${value}</b></div>`
+
+  return `
   <div class="acct-detail">
     <div class="acct-detail-head">
       <h3 class="acct-detail-name ${accountTypeClass(account.type)}">${esc(account.name)}</h3>
       ${accountTypeBadge(account.type)}
+      ${showsState(account) ? stateBadge(accountBadgeState(account, p)) : ''}
+      ${account.firm ? `<span class="acct-firm">${esc(account.firm)}</span>` : ''}
     </div>
 
     <div class="acct-facts">
-      <div class="acct-fact"><span class="stat-label">Trades</span><b>${count}</b></div>
-      <div class="acct-fact">
-        <span class="stat-label">Net P&amp;L</span>
-        <b class="${stats.netPnl >= 0 ? 'ok' : 'bad'}">${fmtMoney(stats.netPnl)}</b>
-      </div>
-      <div class="acct-fact"><span class="stat-label">Win rate</span><b>${stats.winRate}%</b></div>
+      ${p.balance === null ? '' : fact('Balance', plain(p.balance))}
+      ${fact('Net P&amp;L', usd(p.net), tone(p.net))}
+      ${fact('Trades', count)}
+      ${fact('Win rate', `${stats.winRate}%`)}
+      ${fact('Profit factor', fmtNum(stats.profitFactor))}
+      ${fact('Avg R', fmtNum(stats.avgR))}
+      ${fact('Ticks', ticks.n ? fmtTicks(ticks.net) : '—', ticks.n ? tone(ticks.net) : '')}
+      ${fact('Trading days', p.tradingDays)}
+      ${fact('Best day', usd(p.bestDay), tone(p.bestDay))}
+      ${fact('Worst day', usd(p.worstDay), tone(p.worstDay))}
     </div>
 
-    ${account.note ? `<p class="acct-note">${esc(account.note)}</p>` : '<p class="muted">No note.</p>'}
+    ${p.size === null ? '' : equityChart(p.curve, p.size)}
+    ${renderRules(account, p)}
+
+    ${
+      hasGoals(account)
+        ? ''
+        : goalsAvailable
+          ? `<p class="muted acct-hint">No goals set. <b>Edit goals</b> to add a profit target, drawdown
+             and prop-firm rules — a Lucid or Topstep preset fills them in.</p>`
+          : `<p class="muted acct-hint">Goals need the <b>account_goals</b> migration run in Supabase.</p>`
+    }
+
+    ${account.note ? `<p class="acct-note">${esc(account.note)}</p>` : ''}
+  </div>`
+}
+
+const goalField = (key, label, value, hint = '', step = 'any') => `
+  <label>${label}${hint ? ` <span class="opt">${hint}</span>` : ''}
+    <input type="number" min="0" step="${step}" data-goal="${key}" value="${value ?? ''}" inputmode="decimal">
+  </label>`
+
+/** The goals form. Values are read back from the inputs by `readGoals`, keyed by column. */
+const renderGoals = (draft) => `
+  <div class="acct-form">
+    <label>Preset <span class="opt">fills the rules below — check them against your dashboard</span>
+      <select id="g-preset">
+        <option value="">Choose a preset…</option>
+        ${PROP_PRESETS.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('')}
+      </select>
+    </label>
+    <div class="grid goals-grid">
+      <label>Firm <span class="opt">optional</span>
+        <input type="text" data-goal="firm" maxlength="40" value="${esc(draft.firm ?? '')}" placeholder="e.g. Lucid">
+      </label>
+      <label>Status
+        <select data-goal="status">
+          ${ACCOUNT_STATUSES.map(
+            (s) => `<option value="${s}"${(draft.status || 'active') === s ? ' selected' : ''}>${STATUS_LABELS[s]}</option>`
+          ).join('')}
+        </select>
+      </label>
+      ${goalField('account_size', 'Starting balance', draft.account_size, '$')}
+      ${goalField('profit_target', 'Profit target', draft.profit_target, '$')}
+      ${goalField('max_drawdown', 'Max drawdown', draft.max_drawdown, '$')}
+      <label>Drawdown type
+        <select data-goal="drawdown_type">
+          <option value="">—</option>
+          ${DRAWDOWN_TYPES.map(
+            (d) => `<option value="${d.value}"${draft.drawdown_type === d.value ? ' selected' : ''}>${d.label}</option>`
+          ).join('')}
+        </select>
+      </label>
+      ${goalField('drawdown_lock', 'Floor locks at', draft.drawdown_lock, 'balance, optional')}
+      ${goalField('daily_loss_limit', 'Daily loss limit', draft.daily_loss_limit, 'optional')}
+      ${goalField('consistency_pct', 'Consistency', draft.consistency_pct, 'best day max %')}
+      ${goalField('min_days', 'Min trading days', draft.min_days, 'optional', '1')}
+      ${goalField('monthly_goal', 'Monthly goal', draft.monthly_goal, 'personal, $')}
+    </div>
   </div>`
 
 /**
@@ -156,8 +414,8 @@ function renderAssign(account, trades, picked) {
 
 /**
  * Opens the modal. `onChanged` fires after any write that the journal behind it
- * would render differently — a created or deleted account, or an assignment.
- * It is not called on close, so cancelling costs nothing.
+ * would render differently — a created or deleted account, an assignment, or
+ * changed goals. It is not called on close, so cancelling costs nothing.
  */
 export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {}) {
   // Opened from the Backtest journal, this manages backtest accounts only, and
@@ -169,7 +427,7 @@ export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {})
   const overlay = document.createElement('div')
   overlay.className = 'overlay'
   overlay.innerHTML = `
-    <div class="modal modal-sm">
+    <div class="modal modal-sm acct-modal">
       <header class="modal-head">
         <h2 id="a-title">Accounts</h2>
         <button type="button" class="ghost icon" data-act="close" aria-label="Close">${CLOSE_ICON}</button>
@@ -199,6 +457,7 @@ export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {})
     note: '',
     type: backtest ? BACKTEST_ACCOUNT_TYPE : DEFAULT_ACCOUNT_TYPE,
   }
+  let goalDraft = {}
   let picked = new Set()
 
   function close() {
@@ -212,18 +471,14 @@ export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {})
   }
 
   /**
-   * Trades on one account, for the detail view's tiles. Vetoes are dropped
-   * first: they have no fill, so counting them would put a zero into the
-   * win-rate denominator for a trade that was never taken.
+   * Trades on one account, vetoes included — `computeStats` and `tickTally`
+   * drop them themselves. Progress gets real trades only: a veto has no fill,
+   * so it moves no balance.
    */
-  const statsFor = (accountId) => {
-    const own = trades.filter((t) => t.account_id === accountId && isRealTrade(t))
-    const wins = own.filter((t) => Number(t.pnl ?? 0) > 0).length
-    return {
-      netPnl: own.reduce((a, t) => a + Number(t.pnl ?? 0), 0),
-      winRate: own.length ? Math.round((wins / own.length) * 100) : 0,
-    }
-  }
+  const ownTrades = (accountId) => trades.filter((t) => t.account_id === accountId)
+
+  const progressFor = (account) =>
+    accountProgress(account, ownTrades(account.id).filter(isRealTrade), isoDay(new Date()).slice(0, 7))
 
   const button = (act, label, cls = 'ghost') =>
     `<button type="button" class="${cls}" data-act="${esc(act)}">${label}</button>`
@@ -236,7 +491,11 @@ export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {})
     } else if (mode === 'detail') {
       foot.innerHTML =
         `${button('delete', 'Delete', 'ghost danger')}<span class="spacer"></span>` +
-        `${button('back', 'Back')}${button('assign-start', 'Assign trades', '')}`
+        `${button('back', 'Back')}` +
+        `${goalsAvailable ? button('goals-start', 'Edit goals') : ''}` +
+        `${button('assign-start', 'Assign trades', '')}`
+    } else if (mode === 'goals') {
+      foot.innerHTML = `${button('back-detail', 'Cancel')}<span class="spacer"></span>${button('goals-save', 'Save goals', '')}`
     } else {
       const n = picked.size
       foot.innerHTML =
@@ -250,11 +509,12 @@ export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {})
     $('#a-title').textContent = TITLES[mode]
     err.textContent = ''
 
-    if (mode === 'list') body.innerHTML = renderList(accounts, counts, vetoCounts, backtest)
+    if (mode === 'list') body.innerHTML = renderList(accounts, counts, vetoCounts, backtest, progressFor)
     else if (mode === 'create') body.innerHTML = renderCreate(draft)
     else if (mode === 'detail') {
-      body.innerHTML = renderDetail(current, counts.get(current.id) ?? 0, statsFor(current.id))
-    } else body.innerHTML = renderAssign(current, trades, picked)
+      body.innerHTML = renderDetail(current, counts.get(current.id) ?? 0, ownTrades(current.id), progressFor(current))
+    } else if (mode === 'goals') body.innerHTML = renderGoals(goalDraft)
+    else body.innerHTML = renderAssign(current, trades, picked)
 
     renderFoot()
     if (mode === 'create') $('#a-name').focus()
@@ -367,6 +627,35 @@ export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {})
     }
   }
 
+  /** The goals form's current values, keyed by column. */
+  const readGoals = () => {
+    const out = {}
+    overlay.querySelectorAll('[data-goal]').forEach((input) => {
+      out[input.dataset.goal] = input.value
+    })
+    return out
+  }
+
+  async function saveGoals(btn) {
+    goalDraft = readGoals()
+    const problem = validateGoals(goalDraft)
+    if (problem) return void (err.textContent = problem)
+
+    btn.disabled = true
+    try {
+      await updateAccountGoals(current.id, normaliseGoals(goalDraft))
+      dirty = true
+      const id = current.id
+      await load()
+      current = accounts.find((a) => a.id === id) ?? null
+      mode = current ? 'detail' : 'list'
+      render()
+    } catch (e) {
+      fail(e, 'Could not save the goals')
+      btn.disabled = false
+    }
+  }
+
   overlay.addEventListener('click', async (e) => {
     if (e.target === overlay) return close()
 
@@ -407,11 +696,27 @@ export async function openAccountsModal({ onChanged, scope = SCOPES.LIVE } = {})
       picked = new Set()
       render()
     } else if (act === 'assign-save') await saveAssignment(btn)
+    else if (act === 'goals-start') {
+      goalDraft = { ...current }
+      mode = 'goals'
+      render()
+    } else if (act === 'goals-save') await saveGoals(btn)
   })
 
-  // Ticking a box only updates the count on the button; re-rendering the whole
-  // picker here would scroll a long list back to the top on every click.
   overlay.addEventListener('change', (e) => {
+    // A preset overwrites the rule fields but keeps the firm-agnostic ones —
+    // status and the personal monthly goal — so picking one cannot un-pass an
+    // account or wipe a goal that is yours rather than the firm's.
+    if (e.target.id === 'g-preset') {
+      const preset = PROP_PRESETS.find((p) => p.id === e.target.value)
+      if (!preset) return
+      const { id: _id, label: _label, ...rules } = preset
+      goalDraft = { ...readGoals(), ...rules }
+      return render()
+    }
+
+    // Ticking a box only updates the count on the button; re-rendering the whole
+    // picker here would scroll a long list back to the top on every click.
     const id = e.target.dataset?.trade
     if (!id) return
     e.target.checked ? picked.add(id) : picked.delete(id)
