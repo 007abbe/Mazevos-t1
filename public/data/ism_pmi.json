@@ -1206,6 +1206,12 @@
       "value": 54.6,
       "release_date": "2026-09-01",
       "source": "forexfactory-actual"
+    },
+    {
+      "date": "2026-09-01",
+      "value": 54.5,
+      "release_date": "2026-10-01",
+      "source": "forexfactory-actual"
     }
   ]
 }
